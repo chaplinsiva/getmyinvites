@@ -33,7 +33,7 @@ export async function getUploadUrl(fileName: string, fileType: string, templateS
     });
 
     const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-    const publicUrl = `https://pub-${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.dev/${objectKey}`;
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${objectKey}`;
 
     return { success: true, signedUrl, publicUrl };
   } catch (err: any) {

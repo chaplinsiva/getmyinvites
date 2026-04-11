@@ -299,7 +299,7 @@ function TemplateContent() {
               </button>
               {/* Dismiss */}
               <button
-                onClick={() => setPublishResult(null)}
+                onClick={() => { setPublishResult(null); setShowPublishModal(false); }}
                 className="p-2 hover:bg-white/20 rounded-lg transition-colors ml-1"
                 title="Dismiss"
               >
