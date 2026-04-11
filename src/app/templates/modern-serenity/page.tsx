@@ -126,9 +126,45 @@ function TemplateContent() {
     setRsvpFields(rsvpFields.map(f => f.id === id ? { ...f, [key]: value } : f));
   };
 
+  // Publish modal state — declared before the load useEffect that calls setCustomDomain
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [customDomain, setCustomDomain] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  // Load existing invitation data for re-editing
   useEffect(() => {
-    if (!searchParams.has("heroImg")) setIsEditing(true);
-  }, [searchParams]);
+    const editSlug = searchParams.get("editSlug");
+    if (!editSlug) {
+      setIsEditing(true);
+      return;
+    }
+    // Pre-fill the publish modal domain
+    setCustomDomain(editSlug);
+
+    // Fetch the saved invitation data
+    fetch(`/api/invitation?slug=${editSlug}`)
+      .then(r => r.json())
+      .then(({ invitation }) => {
+        if (!invitation?.customized_data) return;
+        const d = invitation.customized_data;
+        if (d.media) setMedia(d.media);
+        if (d.rsvpFields) setRsvpFields(d.rsvpFields);
+        // Restore text content via DOM data attributes after render
+        if (d.textContent) {
+          requestAnimationFrame(() => {
+            Object.entries(d.textContent as Record<string, any>).forEach(([id, node]: any) => {
+              const el = document.querySelector(`[data-editable-id="${id}"]`) as HTMLElement;
+              if (el) {
+                el.innerText = node.text ?? "";
+                el.style.transform = `translate(${node.x ?? 0}px, ${node.y ?? 0}px)`;
+              }
+            });
+          });
+        }
+      })
+      .catch(console.error)
+      .finally(() => setIsEditing(true));
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => requestAnimationFrame(() => setScrollY(window.scrollY));
@@ -167,10 +203,6 @@ function TemplateContent() {
 
     setIsUploading(prev => ({ ...prev, [fieldName]: false }));
   };
-
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [customDomain, setCustomDomain] = useState("");
-  const [isPublishing, setIsPublishing] = useState(false);
 
   const handlePublish = async () => {
     setIsPublishing(true);

@@ -46,7 +46,7 @@ export default function ModernSerenityPublished({ data, invitationId }: { data: 
       const res = await fetch("/api/rsvp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invitationId, fields: rsvpState }),
+        body: JSON.stringify({ invitationId, fields: rsvpState, fieldDefs: rsvpFields }),
       });
       const r = await res.json();
       if (r.error) {
@@ -63,6 +63,18 @@ export default function ModernSerenityPublished({ data, invitationId }: { data: 
 
   return (
     <div className={`relative min-h-screen ${montserrat.className} bg-white text-slate-800`}>
+      {/* ─── MakeMyInvites Watermark ── */}
+      <a
+        href="https://makemyinvites.vercel.app"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200 shadow-lg rounded-full px-4 py-2 hover:shadow-xl transition-all hover:scale-105 group"
+      >
+        <span className="text-base">💌</span>
+        <span className="text-[10px] font-bold tracking-[0.15em] uppercase text-slate-500 group-hover:text-slate-900 transition-colors">
+          Made with MakeMyInvites
+        </span>
+      </a>
       {/* HERO SECTION */}
       <section className="relative w-full h-[100vh] overflow-hidden flex flex-col items-center justify-center">
         <div
