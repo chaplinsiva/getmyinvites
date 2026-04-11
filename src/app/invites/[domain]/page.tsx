@@ -1,6 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
-import ModernSerenityPublished from "./ModernSerenityPublished";
+import ModernSerenityPublished from "@/components/templates/ModernSerenityPublished";
 
 export default async function PublishedInvitation({ params }: { params: { domain: string } }) {
   const supabase = await createClient();
