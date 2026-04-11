@@ -70,30 +70,22 @@ export default async function Invitations() {
               >
                 {/* Card Image Area */}
                 <div className="w-full aspect-[3/4] bg-slate-100 rounded-2xl mb-4 relative overflow-hidden group-hover:scale-[1.02] transition-transform duration-500">
-                  {template.thumbnail_url ? (
-                    <>
-                      <Image
-                        src={template.thumbnail_url}
-                        alt={template.name}
-                        fill
-                        className="object-cover object-top"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      />
-                      {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                        <span className="px-6 py-2.5 bg-white text-slate-900 font-semibold rounded-full text-sm shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-                          Customize Now →
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-rose-50 opacity-50" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-4xl opacity-30">💌</span>
-                      </div>
-                    </>
-                  )}
+                  <div className="absolute inset-0 bg-white overflow-hidden rounded-2xl">
+                    <iframe
+                      src={`/templates/${template.slug}`}
+                      className="absolute top-0 left-0 w-[400%] h-[400%] border-0 origin-top-left scale-[0.25] pointer-events-none transition-transform duration-700 group-hover:scale-[0.26]"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                    />
+                    <div className="absolute inset-0 z-10" />
+                    
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 bg-slate-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px] z-20">
+                      <span className="px-6 py-2.5 bg-white text-slate-900 font-semibold rounded-full text-sm shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                        Customize Now →
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Card Meta */}

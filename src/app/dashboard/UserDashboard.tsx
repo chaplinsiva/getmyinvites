@@ -14,7 +14,18 @@ function InvitationCard({ inv, onShare }: { inv: any; onShare: (url: string) => 
   return (
     <div className="group relative rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-xl transition-all overflow-hidden flex flex-col h-[320px]">
       <div className="relative h-40 w-full overflow-hidden bg-slate-100 flex-shrink-0">
-        {inv.templates?.thumbnail_url ? (
+        {liveUrl ? (
+          <div className="absolute inset-0 overflow-hidden bg-white">
+            <iframe
+              src={liveUrl}
+              className="absolute top-0 left-0 w-[400%] h-[400%] border-0 origin-top-left scale-[0.25] pointer-events-none transition-transform duration-700 group-hover:scale-[0.26]"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            {/* Invisible overlay to prevent mouse interactions with the iframe */}
+            <div className="absolute inset-0 z-10" />
+          </div>
+        ) : inv.templates?.thumbnail_url ? (
           <img
             src={inv.templates.thumbnail_url}
             alt={inv.title}
