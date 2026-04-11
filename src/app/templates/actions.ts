@@ -1,23 +1,18 @@
 "use server";
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createClient } from "@/utils/supabase/server";
 
-export async function uploadMedia(formData: FormData) {
-  const file = formData.get("file") as File;
-  const templateSlug = formData.get("templateSlug") as string;
-
-  if (!file || !templateSlug) {
-    throw new Error("Missing file or templateSlug");
+export async function getUploadUrl(fileName: string, fileType: string, templateSlug: string) {
+  if (!fileName || !templateSlug) {
+    throw new Error("Missing file data");
   }
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
-  // If the user isn't logged in, we can either throw or use a temporary ID. Let's use a temporary one for anonymous edits.
   const userId = user?.id || "anonymous";
 
-  // Construct S3 Client
   const s3Client = new S3Client({
     region: "auto",
     endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -27,28 +22,17 @@ export async function uploadMedia(formData: FormData) {
     },
   });
 
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  
-  // Create object path: e.g. user_123/modern-serenity/16000000_image.png
-  // Safely format the filename
-  const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
   const objectKey = `${userId}/${templateSlug}/${Date.now()}_${safeFileName}`;
 
-  try {
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
-        Key: objectKey,
-        Body: buffer,
-        ContentType: file.type,
-      })
-    );
+  const command = new PutObjectCommand({
+    Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+    Key: objectKey,
+    ContentType: fileType,
+  });
 
-    const publicUrl = `https://pub-${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.dev/${objectKey}`;
-    return { success: true, url: publicUrl };
-  } catch (error: any) {
-    console.error("Upload error:", error);
-    return { success: false, error: error.message };
-  }
+  const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+  const publicUrl = `https://pub-${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.dev/${objectKey}`;
+
+  return { success: true, signedUrl, publicUrl };
 }

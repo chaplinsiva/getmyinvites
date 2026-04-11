@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, useRef } from "react";
 import { Playfair_Display, Montserrat } from "next/font/google";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { uploadMedia } from "../actions";
+import { getUploadUrl } from "../actions";
 
 const playfair = Playfair_Display({ subsets: ["latin"] });
 const montserrat = Montserrat({ weight: ["300", "400", "500", "600"], subsets: ["latin"] });
@@ -71,6 +71,7 @@ function EditableText({
         </div>
       )}
       <div 
+        data-editable-id={id}
         contentEditable={isEditing}
         suppressContentEditableWarning
         onBlur={(e) => setText(e.currentTarget.innerText)}
@@ -141,23 +142,121 @@ function TemplateContent() {
 
     setIsUploading(prev => ({ ...prev, [fieldName]: true }));
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("templateSlug", "modern-serenity");
+    try {
+      // 1. Get Presigned URL directly from our Action
+      const { success, signedUrl, publicUrl, error } = await getUploadUrl(file.name, file.type, "modern-serenity");
+      
+      if (!success || !signedUrl || !publicUrl) {
+         throw new Error(error || "Failed to generate upload URL");
+      }
 
-    const result = await uploadMedia(formData);
-    
-    if (result.success && result.url) {
-      setMedia(prev => ({ ...prev, [fieldName]: result.url }));
-    } else {
-      alert("Error uploading image");
+      // 2. Upload file DIRECTLY from the browser to Cloudflare CDN (bypassing Vercel!)
+      const uploadRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) throw new Error("Cloudflare R2 rejected upload (ensure CORS is configured).");
+
+      // 3. Set the public URL in our editor
+      setMedia(prev => ({ ...prev, [fieldName]: publicUrl }));
+    } catch (err: any) {
+      alert("Error uploading image: " + err.message);
     }
 
     setIsUploading(prev => ({ ...prev, [fieldName]: false }));
   };
 
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [customDomain, setCustomDomain] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handlePublish = async () => {
+    setIsPublishing(true);
+    
+    // 1. Gather all dragged / typed text from the DOM!
+    const nodes = document.querySelectorAll("[data-editable-id]");
+    const textData: any = {};
+    nodes.forEach(node => {
+       const id = node.getAttribute("data-editable-id");
+       if (!id) return;
+       // Parse transform string e.g. "translate(10px, 20px)"
+       const style = (node as HTMLElement).style.transform || "";
+       const match = style.match(/translate\((.*?)px,\s*(.*?)px\)/);
+       let x = 0, y = 0;
+       if (match) {
+         x = parseFloat(match[1]);
+         y = parseFloat(match[2]);
+       }
+       textData[id] = { text: (node as HTMLElement).innerText, x, y };
+    });
+
+    const finalizedData = {
+      media,
+      rsvpFields,
+      textContent: textData
+    };
+
+    // 2. Call Save Action / DB upsert
+    try {
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId: "modern-serenity", // In real app, we use real UUID
+          customDomain,
+          data: finalizedData
+        })
+      });
+      
+      const r = await res.json();
+      if (r.error) {
+        alert("Error publishing: " + r.error);
+      } else {
+        alert("Successfully published! Live at: https://" + customDomain + ".makemyinvites.vercel.app");
+        setIsEditing(false);
+        setShowPublishModal(false);
+      }
+    } catch (e) {
+       alert("Failed to publish");
+    }
+    
+    setIsPublishing(false);
+  };
+
   return (
     <div className={`relative min-h-screen ${montserrat.className} bg-white text-slate-800`}>
+      
+      {/* PUBLISH MODAL */}
+      {showPublishModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in zoom-in-95 duration-200">
+             <h2 className={`${playfair.className} text-2xl font-bold text-slate-900 mb-2`}>Publish Invitation</h2>
+             <p className="text-slate-500 text-sm mb-6 leading-relaxed">Choose a custom Web Address to send to your guests.</p>
+             
+             <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-100">
+               <input 
+                 type="text" 
+                 placeholder="sophia-and-jackson"
+                 value={customDomain}
+                 onChange={e => setCustomDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                 className="flex-1 p-4 bg-transparent outline-none text-right font-medium text-slate-800 placeholder:text-slate-300"
+               />
+               <div className="p-4 bg-slate-100 text-slate-500 font-medium text-sm flex items-center border-l border-slate-200">
+                 .makemyinvites.vercel.app
+               </div>
+             </div>
+             
+             <div className="mt-8 flex gap-3">
+               <button onClick={() => setShowPublishModal(false)} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+               <button onClick={handlePublish} disabled={isPublishing || customDomain.length < 3} className="flex-1 py-4 font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+                 {isPublishing ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : "Save & Publish"}
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
       
       {/* 
         PREMIUM EDITOR SIDEBAR (Media Only now, since text is in-place)
@@ -270,10 +369,10 @@ function TemplateContent() {
 
           <div className="p-8 border-t border-slate-200 bg-slate-50 sticky bottom-0">
             <button 
-              onClick={() => setIsEditing(false)} 
+              onClick={() => setShowPublishModal(true)} 
               className="w-full py-4 rounded-xl bg-slate-900 text-white text-xs tracking-[0.2em] uppercase font-bold hover:bg-slate-800 transition-all shadow-xl hover:shadow-slate-900/20 active:scale-95 flex items-center justify-center gap-3"
             >
-              Finish & Review
+              Finish & Publish
             </button>
             <Link href="/dashboard" className="block text-center mt-4 text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">
               Exit to Dashboard

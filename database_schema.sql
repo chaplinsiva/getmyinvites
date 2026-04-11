@@ -66,6 +66,7 @@ create table if not exists public.user_invitations (
   title text not null default 'My Wedding Invitation',
   customized_data jsonb default '{}'::jsonb, -- Store selected positions, texts, colors
   r2_uploaded_url text, -- If we generate an overarching output that gets uploaded to R2 (e.g., pdf or image)
+  custom_domain text unique, -- Multi-tenant subdomain string (e.g., 'sophia-and-jackson')
   status text default 'draft', -- 'draft', 'published'
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
