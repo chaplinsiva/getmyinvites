@@ -32,7 +32,6 @@ export async function POST(req: Request) {
         title: `${customDomain} Wedding`,
         customized_data: data,
         custom_domain: customDomain,
-        published: true,
         status: 'published'
       })
       .select()
