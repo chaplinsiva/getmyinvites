@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/layout/Header";
 import { createClient } from "@/utils/supabase/server";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,6 +40,7 @@ export default async function RootLayout({
         <main className="flex-1 w-full relative">
           {children}
         </main>
+        <Analytics />
       </body>
     </html>
   );

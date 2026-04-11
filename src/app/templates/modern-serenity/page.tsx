@@ -214,7 +214,8 @@ function TemplateContent() {
       if (r.error) {
         alert("Error publishing: " + r.error);
       } else {
-        alert("Successfully published! Live at: https://" + customDomain + ".makemyinvites.vercel.app");
+        const liveUrl = `https://makemyinvites.vercel.app/${customDomain}`;
+        alert(`✅ Published! Share this link with your guests:\n\n${liveUrl}`);
         setIsEditing(false);
         setShowPublishModal(false);
       }
@@ -235,17 +236,23 @@ function TemplateContent() {
              <h2 className={`${playfair.className} text-2xl font-bold text-slate-900 mb-2`}>Publish Invitation</h2>
              <p className="text-slate-500 text-sm mb-6 leading-relaxed">Choose a custom Web Address to send to your guests.</p>
              
-             <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-100">
-               <input 
-                 type="text" 
-                 placeholder="sophia-and-jackson"
-                 value={customDomain}
-                 onChange={e => setCustomDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                 className="flex-1 p-4 bg-transparent outline-none text-right font-medium text-slate-800 placeholder:text-slate-300"
-               />
-               <div className="p-4 bg-slate-100 text-slate-500 font-medium text-sm flex items-center border-l border-slate-200">
-                 .makemyinvites.vercel.app
+             <div className="mb-2">
+               <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Your Invitation URL</p>
+               <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-100">
+                 <div className="px-4 py-4 text-slate-400 font-medium text-sm flex items-center shrink-0 border-r border-slate-200 bg-white">
+                   makemyinvites.vercel.app/
+                 </div>
+                 <input 
+                   type="text" 
+                   placeholder="sophia-and-jackson"
+                   value={customDomain}
+                   onChange={e => setCustomDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                   className="flex-1 p-4 bg-transparent outline-none font-bold text-slate-900 placeholder:text-slate-300 min-w-0"
+                 />
                </div>
+               {customDomain.length >= 3 && (
+                 <p className="text-xs text-indigo-500 mt-2 font-medium truncate">✨ makemyinvites.vercel.app/{customDomain}</p>
+               )}
              </div>
              
              <div className="mt-8 flex gap-3">
