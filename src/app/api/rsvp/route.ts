@@ -11,55 +11,34 @@ export async function POST(req: Request) {
 
     const supabase = await createClient();
 
-    // ─── Smart label-based mapping ───────────────────────────────────────────
-    // fieldDefs = [{ id, label, type, required }, ...]
-    // fields    = { [fieldId]: value, ... }
-    // We find the field whose label contains common keywords and pull its value.
-
-    function findByLabel(keywords: string[]): string | null {
-      if (!fieldDefs) return null;
-      const def = fieldDefs.find((f: any) =>
-        keywords.some((kw) => f.label?.toLowerCase().includes(kw))
-      );
-      return def ? (fields?.[def.id] ?? null) : null;
-    }
-
-    const guestName =
-      findByLabel(["name", "guest", "your name"]) || "Guest";
-
-    const guestEmail =
-      findByLabel(["email", "e-mail"]);
-
-    const attendingRaw = findByLabel(["attending", "attend", "coming", "rsvp"]);
-    let attending = true;
-    if (attendingRaw !== null) {
-      // Could be boolean (checkbox) or string like "yes"/"no"
-      if (typeof attendingRaw === "boolean") attending = attendingRaw;
-      else attending = !["no", "false", "0", "not attending"].includes(String(attendingRaw).toLowerCase());
-    }
-
-    const dietary = findByLabel(["dietary", "allerg", "food", "restriction"]);
-
-    const plusOnesRaw = findByLabel(["plus", "guest", "additional", "extra"]);
-    const plusOnes = plusOnesRaw ? parseInt(String(plusOnesRaw), 10) || 0 : 0;
-
-    // ─── Build a human-readable responses object for display ─────────────────
+    // Build human-readable responses: { "Your Full Name": "John", "Email": "john@..." }
     const responses: Record<string, any> = {};
-    if (fieldDefs) {
+    let guestName = "Guest";
+    let guestEmail: string | null = null;
+
+    if (fieldDefs && fields) {
       for (const def of fieldDefs) {
-        responses[def.label] = fields?.[def.id] ?? null;
+        const val = fields[def.id];
+        responses[def.label] = val ?? null;
+
+        // Smart extraction for core DB columns
+        const lbl = def.label.toLowerCase();
+        if (lbl.includes("name") && typeof val === "string" && val.trim()) {
+          guestName = val.trim();
+        }
+        if ((lbl.includes("email") || lbl.includes("e-mail")) && typeof val === "string" && val.trim()) {
+          guestEmail = val.trim();
+        }
       }
     }
 
     const { error } = await supabase.from("rsvps").insert({
       invitation_id: invitationId,
       guest_name: guestName,
-      guest_email: guestEmail || null,
-      attending,
-      dietary_requirements: dietary || null,
-      plus_ones: isNaN(plusOnes) ? 0 : plusOnes,
-      // Full named responses stored in the extra column for display
-      // (Add a migration: ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS responses JSONB)
+      guest_email: guestEmail,
+      attending: true,
+      dietary_requirements: JSON.stringify(responses),
+      plus_ones: 0,
     });
 
     if (error) {

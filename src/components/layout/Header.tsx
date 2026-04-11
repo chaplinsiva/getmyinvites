@@ -25,7 +25,11 @@ export default function Header({ user }: { user: any }) {
     { name: "About Us", href: "/about" },
   ];
 
-  if (pathname.startsWith("/templates")) {
+  // Hide header on editor and published invitation pages
+  const KNOWN_ROUTES = ["/", "/invitations", "/about", "/dashboard", "/login", "/signup"];
+  const isKnownRoute = KNOWN_ROUTES.includes(pathname);
+
+  if (!isKnownRoute) {
     return null;
   }
 

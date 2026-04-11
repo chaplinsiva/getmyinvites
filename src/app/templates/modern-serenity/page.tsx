@@ -204,8 +204,11 @@ function TemplateContent() {
     setIsUploading(prev => ({ ...prev, [fieldName]: false }));
   };
 
+  const [publishResult, setPublishResult] = useState<{ type: 'success' | 'error'; message: string; url?: string } | null>(null);
+
   const handlePublish = async () => {
     setIsPublishing(true);
+    setPublishResult(null);
     
     // 1. Gather all dragged / typed text from the DOM!
     const nodes = document.querySelectorAll("[data-editable-id]");
@@ -213,7 +216,6 @@ function TemplateContent() {
     nodes.forEach(node => {
        const id = node.getAttribute("data-editable-id");
        if (!id) return;
-       // Parse transform string e.g. "translate(10px, 20px)"
        const style = (node as HTMLElement).style.transform || "";
        const match = style.match(/translate\((.*?)px,\s*(.*?)px\)/);
        let x = 0, y = 0;
@@ -230,13 +232,12 @@ function TemplateContent() {
       textContent: textData
     };
 
-    // 2. Call Save Action / DB upsert
     try {
       const res = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          templateId: "modern-serenity", // In real app, we use real UUID
+          templateId: "modern-serenity",
           customDomain,
           data: finalizedData
         })
@@ -244,15 +245,13 @@ function TemplateContent() {
       
       const r = await res.json();
       if (r.error) {
-        alert("Error publishing: " + r.error);
+        setPublishResult({ type: 'error', message: r.error });
       } else {
         const liveUrl = `https://makemyinvites.vercel.app/${customDomain}`;
-        alert(`✅ Published! Share this link with your guests:\n\n${liveUrl}`);
-        setIsEditing(false);
-        setShowPublishModal(false);
+        setPublishResult({ type: 'success', message: 'Your invitation is live!', url: liveUrl });
       }
     } catch (e) {
-       alert("Failed to publish");
+       setPublishResult({ type: 'error', message: 'Network error. Please try again.' });
     }
     
     setIsPublishing(false);
@@ -261,38 +260,96 @@ function TemplateContent() {
   return (
     <div className={`relative min-h-screen ${montserrat.className} bg-white text-slate-800`}>
       
-      {/* PUBLISH MODAL */}
-      {showPublishModal && (
+      {/* ─── PUBLISHED TOP BAR ─── */}
+      {publishResult?.type === 'success' && publishResult.url && (
+        <div className="fixed top-0 left-0 w-full z-[110] bg-emerald-600 text-white shadow-lg">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">🎉</span>
+              <span className="text-sm font-semibold">Your invitation is live!</span>
+              <span className="text-xs text-emerald-200 font-medium hidden sm:block">{publishResult.url}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* View Page */}
+              <a
+                href={publishResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                View Page
+              </a>
+              {/* Share / Copy Link */}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(publishResult.url || "");
+                  const btn = document.getElementById("share-btn-text");
+                  if (btn) { btn.innerText = "Copied!"; setTimeout(() => { btn.innerText = "Share"; }, 1500); }
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-white text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                <span id="share-btn-text">Share</span>
+              </button>
+              {/* Dismiss */}
+              <button
+                onClick={() => setPublishResult(null)}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors ml-1"
+                title="Dismiss"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PUBLISH MODAL — only shows for input/error, auto-dismissed on success */}
+      {showPublishModal && publishResult?.type !== 'success' && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in zoom-in-95 duration-200">
-             <h2 className={`${playfair.className} text-2xl font-bold text-slate-900 mb-2`}>Publish Invitation</h2>
-             <p className="text-slate-500 text-sm mb-6 leading-relaxed">Choose a custom Web Address to send to your guests.</p>
-             
-             <div className="mb-2">
-               <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Your Invitation URL</p>
-               <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-100">
-                 <div className="px-4 py-4 text-slate-400 font-medium text-sm flex items-center shrink-0 border-r border-slate-200 bg-white">
-                   makemyinvites.vercel.app/
-                 </div>
-                 <input 
-                   type="text" 
-                   placeholder="sophia-and-jackson"
-                   value={customDomain}
-                   onChange={e => setCustomDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                   className="flex-1 p-4 bg-transparent outline-none font-bold text-slate-900 placeholder:text-slate-300 min-w-0"
-                 />
-               </div>
-               {customDomain.length >= 3 && (
-                 <p className="text-xs text-indigo-500 mt-2 font-medium truncate">✨ makemyinvites.vercel.app/{customDomain}</p>
-               )}
-             </div>
-             
-             <div className="mt-8 flex gap-3">
-               <button onClick={() => setShowPublishModal(false)} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
-               <button onClick={handlePublish} disabled={isPublishing || customDomain.length < 3} className="flex-1 py-4 font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
-                 {isPublishing ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : "Save & Publish"}
-               </button>
-             </div>
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+            <h2 className={`${playfair.className} text-2xl font-bold text-slate-900 mb-2`}>Publish Invitation</h2>
+            <p className="text-slate-500 text-sm mb-6 leading-relaxed">Choose a custom URL to share with your guests.</p>
+
+            {publishResult?.type === 'error' && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-6 text-sm text-rose-700 font-medium">
+                ⚠️ {publishResult.message}
+              </div>
+            )}
+         
+            <div className="mb-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Your Invitation URL</p>
+              <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-100">
+                <div className="px-4 py-4 text-slate-400 font-medium text-sm flex items-center shrink-0 border-r border-slate-200 bg-white">
+                  makemyinvites.vercel.app/
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="sophia-and-jackson"
+                  value={customDomain}
+                  onChange={e => setCustomDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  className="flex-1 p-4 bg-transparent outline-none font-bold text-slate-900 placeholder:text-slate-300 min-w-0"
+                />
+              </div>
+              {customDomain.length >= 3 && (
+                <p className="text-xs text-indigo-500 mt-2 font-medium truncate">✨ makemyinvites.vercel.app/{customDomain}</p>
+              )}
+            </div>
+         
+            <div className="mt-8 flex gap-3">
+              <button onClick={() => { setShowPublishModal(false); setPublishResult(null); }} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handlePublish} disabled={isPublishing || customDomain.length < 3} className="flex-1 py-4 font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+                {isPublishing ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : "Save & Publish"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -175,79 +175,62 @@ export default function UserDashboard({
 
           {/* RSVPS TAB */}
           {activeTab === "rsvps" && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="px-6 py-4">Guest Name</th>
-                      <th className="px-6 py-4">Email</th>
-                      <th className="px-6 py-4">Invitation</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">+1s</th>
-                      <th className="px-6 py-4">Dietary Notes</th>
-                      <th className="px-6 py-4">Submitted</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rsvps.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-16 text-center">
-                          <p className="text-3xl mb-3">💌</p>
-                          <p className="text-slate-400 font-medium">No RSVPs received yet.</p>
-                          <p className="text-slate-300 text-sm mt-1">Share your invitation link to start receiving responses.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      rsvps.map((rsvp) => {
-                        const inv = invitations.find((i) => i.id === rsvp.invitation_id);
-                        return (
-                          <tr
-                            key={rsvp.id}
-                            className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors"
-                          >
-                            <td className="px-6 py-4">
-                              <div className="font-semibold text-slate-900">{rsvp.guest_name}</div>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-slate-500">
-                              {rsvp.guest_email || <span className="text-slate-300 italic">none</span>}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                                {inv?.title || "Unknown"}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              {rsvp.attending ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Attending
+            <div>
+              {rsvps.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
+                  <p className="text-3xl mb-3">💌</p>
+                  <p className="text-slate-400 font-medium">No RSVPs received yet.</p>
+                  <p className="text-slate-300 text-sm mt-1">Share your invitation link to start receiving responses.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {rsvps.map((rsvp) => {
+                    const inv = invitations.find((i) => i.id === rsvp.invitation_id);
+                    // Parse the dynamic responses stored as JSON
+                    let responses: Record<string, any> = {};
+                    try {
+                      if (rsvp.dietary_requirements && rsvp.dietary_requirements.startsWith("{")) {
+                        responses = JSON.parse(rsvp.dietary_requirements);
+                      }
+                    } catch { /* not JSON, treat as plain text */ }
+
+                    return (
+                      <div key={rsvp.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow">
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h4 className="font-bold text-slate-900 text-lg">{rsvp.guest_name}</h4>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {rsvp.guest_email || "No email"} · {new Date(rsvp.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </p>
+                          </div>
+                          <span className="text-sm bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-medium shrink-0">
+                            {inv?.title?.replace(" Wedding", "") || "—"}
+                          </span>
+                        </div>
+
+                        {/* Dynamic Fields */}
+                        {Object.keys(responses).length > 0 ? (
+                          <div className="space-y-2 pt-4 border-t border-slate-100">
+                            {Object.entries(responses).map(([label, value]) => (
+                              <div key={label} className="flex items-start gap-3">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 pt-0.5 w-28 text-right">{label}</span>
+                                <span className="text-sm text-slate-700 font-medium">
+                                  {typeof value === "boolean" ? (value ? "✅ Yes" : "❌ No") : (String(value) || "—")}
                                 </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Declined
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 text-sm font-medium text-slate-600">
-                              {rsvp.plus_ones || 0}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-slate-500 max-w-[200px] truncate">
-                              {rsvp.dietary_requirements || <span className="text-slate-300 italic">none</span>}
-                            </td>
-                            <td className="px-6 py-4 text-xs text-slate-400">
-                              {new Date(rsvp.created_at).toLocaleDateString("en-IN", {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              })}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : rsvp.dietary_requirements ? (
+                          <div className="pt-4 border-t border-slate-100">
+                            <p className="text-sm text-slate-600">{rsvp.dietary_requirements}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
