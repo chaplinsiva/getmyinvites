@@ -2,14 +2,15 @@ import { createClient } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
 import ModernSerenityPublished from "@/components/templates/ModernSerenityPublished";
 
-export default async function PublishedInvitation({ params }: { params: { domain: string } }) {
+export default async function PublishedInvitation({ params }: { params: Promise<{ domain: string }> }) {
+  const { domain } = await params;
   const supabase = await createClient();
 
   // 1. Fetch the invitation matching the custom domain
   const { data: invitation, error } = await supabase
     .from("user_invitations")
     .select("*, templates(slug)")
-    .eq("custom_domain", params.domain)
+    .eq("custom_domain", domain)
     .single();
 
   if (error || !invitation) {
