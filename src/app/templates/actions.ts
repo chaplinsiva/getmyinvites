@@ -11,7 +11,10 @@ export async function getUploadUrl(fileName: string, fileType: string, templateS
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id || "anonymous";
+  if (!user?.id) {
+    return { success: false, error: "Please sign in to upload images.", signedUrl: null, publicUrl: null };
+  }
+  const userId = user.id;
 
   const s3Client = new S3Client({
     region: "auto",

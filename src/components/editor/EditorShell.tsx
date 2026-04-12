@@ -1,12 +1,50 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Playfair_Display } from "next/font/google";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { EditorContext, RsvpField, EditorMediaState } from "./EditorContext";
 import { getUploadUrl } from "@/app/templates/actions";
+import { createClient } from "@/utils/supabase/client";
+import InvitationShareDock from "@/components/invitation/InvitationShareDock";
+import { TEMPLATE_SLUGS_WITH_DARK_SHARE_DOCK } from "@/lib/template-registry";
 
 const playfair = Playfair_Display({ subsets: ["latin"] });
+
+function GuestPageToggle({
+  label,
+  description,
+  on,
+  onChange,
+  compact,
+}: {
+  label: string;
+  description: string;
+  on: boolean;
+  onChange: (v: boolean) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`flex items-start justify-between gap-3 ${compact ? "py-3" : "py-4"} border-b border-slate-100 last:border-0`}>
+      <div className="min-w-0 pr-2">
+        <p className="text-sm font-semibold text-slate-900">{label}</p>
+        <p className="text-xs text-slate-500 mt-1 leading-relaxed">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={() => onChange(!on)}
+        className={`relative shrink-0 w-11 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 ${on ? "bg-indigo-600" : "bg-slate-200"}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-5" : "translate-x-0"}`}
+        />
+      </button>
+    </div>
+  );
+}
 
 export interface TemplateConfig {
   defaultMedia: EditorMediaState;
@@ -21,6 +59,8 @@ interface EditorShellProps {
 }
 
 export default function EditorShell({ templateSlug, config, editSlug, children }: EditorShellProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isEditing, setIsEditing] = useState(false);
   const [media, setMedia] = useState<EditorMediaState>(config.defaultMedia);
   const [rsvpFields, setRsvpFields] = useState<RsvpField[]>(config.defaultRsvpFields);
@@ -32,34 +72,102 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
   const [customDomain, setCustomDomain] = useState(editSlug || "");
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<{ type: "success" | "error"; message: string; url?: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [inIframe, setInIframe] = useState(false);
+  const [dismissAuthPrompt, setDismissAuthPrompt] = useState(false);
+  const [loadInviteError, setLoadInviteError] = useState<string | null>(null);
+  /** Kept after dismissing the top success bar so Share stays available */
+  const [sharePublished, setSharePublished] = useState<{ url: string; first: string; second: string } | null>(null);
+  const [showRsvp, setShowRsvp] = useState(true);
+  const [showShare, setShowShare] = useState(true);
+  const [origin, setOrigin] = useState("");
 
-  // Load saved invitation on mount if re-editing
+  const nextReturnPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+  const loginHref = `/login?next=${encodeURIComponent(nextReturnPath)}`;
+  const signupHref = `/login?next=${encodeURIComponent(nextReturnPath)}&mode=signup`;
+
   useEffect(() => {
-    if (editSlug) {
-      fetch(`/api/invitation?slug=${editSlug}`)
-        .then((r) => r.json())
-        .then(({ invitation }) => {
-          if (!invitation?.customized_data) return;
-          const d = invitation.customized_data;
-          if (d.media) setMedia(d.media);
-          if (d.rsvpFields) setRsvpFields(d.rsvpFields);
-          if (d.textContent) {
-            requestAnimationFrame(() => {
-              Object.entries(d.textContent as Record<string, any>).forEach(([id, node]: any) => {
-                const el = document.querySelector(`[data-editable-id="${id}"]`) as HTMLElement;
-                if (el) {
-                  el.innerText = node.text ?? "";
-                  el.style.transform = `translate(${node.x ?? 0}px, ${node.y ?? 0}px)`;
-                }
-              });
+    setInIframe(typeof window !== "undefined" && window.self !== window.top);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setOrigin(window.location.origin);
+  }, []);
+
+  // Auth + optional saved invitation (edit flow requires login)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled) return;
+      const uid = user?.id ?? null;
+      setUserId(uid);
+      setAuthLoading(false);
+      setLoadInviteError(null);
+
+      if (editSlug) {
+        if (!uid) {
+          setIsEditing(false);
+          return;
+        }
+        const r = await fetch(`/api/invitation?slug=${encodeURIComponent(editSlug)}`);
+        if (cancelled) return;
+        if (r.status === 401) {
+          setIsEditing(false);
+          return;
+        }
+        if (!r.ok) {
+          setIsEditing(false);
+          setLoadInviteError("Could not load this invitation.");
+          return;
+        }
+        const body = await r.json();
+        if (body.error) {
+          setIsEditing(false);
+          setLoadInviteError(typeof body.error === "string" ? body.error : "Could not load this invitation.");
+          return;
+        }
+        const invitation = body.invitation;
+        if (!invitation) {
+          setIsEditing(false);
+          setLoadInviteError("We could not find this invitation.");
+          return;
+        }
+        if (!invitation.customized_data) {
+          setIsEditing(true);
+          return;
+        }
+        const d = invitation.customized_data;
+        if (d.media) setMedia(d.media);
+        if (d.rsvpFields) setRsvpFields(d.rsvpFields);
+        if (typeof d.showRsvp === "boolean") setShowRsvp(d.showRsvp);
+        else setShowRsvp(true);
+        if (typeof d.showShare === "boolean") setShowShare(d.showShare);
+        else setShowShare(true);
+        if (d.textContent) {
+          requestAnimationFrame(() => {
+            Object.entries(d.textContent as Record<string, any>).forEach(([id, node]: any) => {
+              const el = document.querySelector(`[data-editable-id="${id}"]`) as HTMLElement;
+              if (el) {
+                el.innerText = node.text ?? "";
+                el.style.transform = `translate(${node.x ?? 0}px, ${node.y ?? 0}px)`;
+              }
             });
-          }
-        })
-        .catch(console.error)
-        .finally(() => setIsEditing(true));
-    } else {
-      setIsEditing(true);
-    }
+          });
+        }
+        setIsEditing(true);
+        return;
+      }
+
+      setIsEditing(!!uid);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [editSlug]);
 
   // Scroll tracker
@@ -94,6 +202,7 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
   const handlePublish = async () => {
     setIsPublishing(true);
     setPublishResult(null);
+    setSharePublished(null);
     const nodes = document.querySelectorAll("[data-editable-id]");
     const textData: any = {};
     nodes.forEach((node) => {
@@ -107,13 +216,22 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
       const res = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId: templateSlug, customDomain, data: { media, rsvpFields, textContent: textData } }),
+        body: JSON.stringify({
+          templateId: templateSlug,
+          customDomain,
+          data: { media, rsvpFields, textContent: textData, showRsvp, showShare },
+        }),
       });
       const r = await res.json();
-      if (r.error) {
+      if (res.status === 401) {
+        setPublishResult({ type: "error", message: "Please sign in to publish your invitation." });
+      } else if (r.error) {
         setPublishResult({ type: "error", message: r.error });
       } else {
         const liveUrl = `${typeof window !== "undefined" ? window.location.origin : "https://makemyinvites.vercel.app"}/${customDomain}`;
+        const first = (textData.p1?.text ?? "").trim();
+        const second = (textData.p2?.text ?? "").trim();
+        setSharePublished({ url: liveUrl, first, second });
         setPublishResult({ type: "success", message: "Your invitation is live!", url: liveUrl });
         setShowPublishModal(false);
       }
@@ -180,11 +298,48 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
   const tabItems = [
     { id: "media", label: "📷 Photos" },
     { id: "rsvp config", label: "📋 RSVP" },
+    { id: "options", label: "⚙️ Page" },
     { id: "publish", label: "🚀 Publish" },
   ];
 
+  const draftShareUrl = useMemo(
+    () => (origin && customDomain.length >= 3 ? `${origin}/${customDomain}` : ""),
+    [origin, customDomain],
+  );
+  const editorShareUrl = sharePublished?.url || draftShareUrl;
+  const editorSharePendingHint =
+    !editorShareUrl
+      ? "Open Publish, type your invite URL (3+ characters), then Save & publish. Your guest link will show here and sharing will work once the page is live."
+      : undefined;
+
+  const studioActive = isEditing && !inIframe;
+  const mustSignInForEdit = Boolean(editSlug) && !userId && !authLoading;
+  const suggestSignIn = !editSlug && !userId && !authLoading;
+  const showAuthModal =
+    !inIframe && !authLoading && !userId && (mustSignInForEdit || (suggestSignIn && !dismissAuthPrompt));
+
   return (
-    <EditorContext.Provider value={{ isEditing, media, rsvpFields, scrollY }}>
+    <EditorContext.Provider
+      value={{
+        isEditing: studioActive,
+        media,
+        rsvpFields,
+        scrollY,
+        showRsvp,
+        showShare,
+        setShowRsvp,
+        setShowShare,
+      }}
+    >
+      {userId && editSlug && loadInviteError && (
+        <div className="fixed top-0 left-0 right-0 z-[130] bg-rose-600 text-white px-4 py-3 text-center text-sm font-medium shadow-lg">
+          {loadInviteError}{" "}
+          <Link href="/dashboard" className="underline font-bold ml-1">
+            Back to dashboard
+          </Link>
+        </div>
+      )}
+
       {/* ─── PUBLISHED TOP BAR ─── */}
       {publishResult?.type === "success" && publishResult.url && (
         <div className="fixed top-0 left-0 w-full z-[110] bg-emerald-600 text-white shadow-lg">
@@ -203,6 +358,45 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
               </button>
               <button onClick={() => { setPublishResult(null); setShowPublishModal(false); }} className="p-2 hover:bg-white/20 rounded-lg ml-1" title="Dismiss">✕</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── SIGN IN TO CREATE / EDIT ─── */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full border border-slate-200">
+            <h2 className={`${playfair.className} text-2xl font-bold text-slate-900 mb-2`}>
+              {editSlug ? "Sign in to edit" : "Sign in to create"}
+            </h2>
+            <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+              {editSlug
+                ? "You need an account to open this invitation in the editor."
+                : "Save your design, upload photos, and publish your invitation link after you sign in."}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link
+                href={loginHref}
+                className="flex-1 text-center py-3.5 rounded-xl bg-slate-900 text-white text-sm font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
+              >
+                Sign in
+              </Link>
+              <Link
+                href={signupHref}
+                className="flex-1 text-center py-3.5 rounded-xl border-2 border-slate-200 text-slate-800 text-sm font-bold uppercase tracking-wider hover:bg-slate-50 transition-colors"
+              >
+                Sign up
+              </Link>
+            </div>
+            {!editSlug && (
+              <button
+                type="button"
+                onClick={() => setDismissAuthPrompt(true)}
+                className="w-full mt-4 text-sm text-slate-500 hover:text-slate-700 font-medium"
+              >
+                Preview template only
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -243,7 +437,7 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
       )}
 
       {/* ─── DESKTOP LEFT SIDEBAR ─── */}
-      {isEditing && (
+      {studioActive && (
         <div className="hidden md:flex fixed top-0 left-0 w-80 h-screen bg-white/95 backdrop-blur-3xl border-r border-slate-200 shadow-2xl z-50 flex-col overflow-y-auto">
           <div className="p-8 border-b border-slate-100 bg-white sticky top-0 z-10 text-center">
             <h2 className={`${playfair.className} text-xl font-bold text-slate-900 mb-2`}>Design Studio</h2>
@@ -255,15 +449,36 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
             </p>
           </div>
           <div className="flex border-b border-slate-100 sticky top-[152px] z-10">
-            {["media", "rsvp config"].map((tab) => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-4 text-[10px] font-bold tracking-[0.2em] uppercase transition-colors ${activeTab === tab ? "border-b-2 border-slate-900 text-slate-900 bg-white" : "text-slate-400 hover:text-slate-600"}`}>
-                {tab === "media" ? "📷 Photos" : "📋 RSVP"}
+            {(["media", "rsvp config", "options"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-3 text-[9px] font-bold tracking-[0.15em] uppercase transition-colors ${activeTab === tab ? "border-b-2 border-slate-900 text-slate-900 bg-white" : "text-slate-400 hover:text-slate-600"}`}
+              >
+                {tab === "media" ? "📷 Photos" : tab === "rsvp config" ? "📋 RSVP" : "⚙️ Page"}
               </button>
             ))}
           </div>
           <div className="p-6 flex-1 overflow-y-auto">
             {activeTab === "media" && <MediaEditor />}
             {activeTab === "rsvp config" && <RsvpEditor />}
+            {activeTab === "options" && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Visible to guests</p>
+                <GuestPageToggle
+                  label="RSVP form"
+                  description="When off, the RSVP section is hidden on the live page and in this preview."
+                  on={showRsvp}
+                  onChange={setShowRsvp}
+                />
+                <GuestPageToggle
+                  label="Share button"
+                  description="When off, the social share control is hidden for guests and in this preview."
+                  on={showShare}
+                  onChange={setShowShare}
+                />
+              </div>
+            )}
           </div>
           <div className="p-8 border-t border-slate-200 bg-slate-50 sticky bottom-0">
             <button onClick={() => setShowPublishModal(true)} className="w-full py-4 rounded-xl bg-slate-900 text-white text-xs tracking-[0.2em] uppercase font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">
@@ -277,7 +492,7 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
       )}
 
       {/* ─── MOBILE BOTTOM SHEET ─── */}
-      {isEditing && (
+      {studioActive && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-[0_-4px_32px_rgba(0,0,0,0.08)]">
           <div className="flex border-b border-slate-100">
             {tabItems.map((tab) => (
@@ -301,6 +516,25 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
             <div className="overflow-y-auto max-h-[55vh] p-5">
               {activeTab === "media" && <MediaEditor compact />}
               {activeTab === "rsvp config" && <RsvpEditor compact />}
+              {activeTab === "options" && (
+                <div className="space-y-1 py-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Visible to guests</p>
+                  <GuestPageToggle
+                    label="RSVP form"
+                    description="Hide the RSVP block on the live invitation."
+                    on={showRsvp}
+                    onChange={setShowRsvp}
+                    compact
+                  />
+                  <GuestPageToggle
+                    label="Share button"
+                    description="Hide WhatsApp, Facebook, and other share options."
+                    on={showShare}
+                    onChange={setShowShare}
+                    compact
+                  />
+                </div>
+              )}
               {activeTab === "publish" && (
                 <div className="space-y-3 py-2">
                   <button onClick={() => setShowPublishModal(true)} className="w-full py-4 rounded-xl bg-slate-900 text-white text-xs tracking-[0.2em] uppercase font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">
@@ -316,9 +550,21 @@ export default function EditorShell({ templateSlug, config, editSlug, children }
         </div>
       )}
 
-      {/* ─── TEMPLATE PREVIEW ─── */}
-      <div className={`transition-all duration-700 ${isEditing ? "md:ml-80 pb-44 md:pb-0" : ""}`}>
+      {/* ─── TEMPLATE PREVIEW (share dock lives here so it sits over the invitation, not the sidebar) ─── */}
+      <div className={`relative transition-all duration-700 ${studioActive ? "md:ml-80 pb-44 md:pb-0" : ""}`}>
         {children}
+        {studioActive && showShare && (
+          <InvitationShareDock
+            anchor="editorPreview"
+            shareUrl={editorShareUrl}
+            heroImageUrl={media.heroImage}
+            nameFirst={sharePublished?.first ?? ""}
+            nameSecond={sharePublished?.second ?? ""}
+            variant={TEMPLATE_SLUGS_WITH_DARK_SHARE_DOCK.has(templateSlug) ? "dark" : "light"}
+            usePageUrlFallback={false}
+            pendingLinkHint={editorSharePendingHint}
+          />
+        )}
       </div>
     </EditorContext.Provider>
   );

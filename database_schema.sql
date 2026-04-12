@@ -39,6 +39,21 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- Browse groupings for the invitations gallery (optional FK on templates)
+create table if not exists public.template_categories (
+  id uuid default gen_random_uuid() primary key,
+  slug text not null unique,
+  name text not null,
+  sort_order integer not null default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.template_categories enable row level security;
+
+create policy "Template categories are viewable by everyone."
+  on public.template_categories for select
+  using ( true );
+
 -- Create a templates table to store metadata for Cloudflare R2 templates
 create table if not exists public.templates (
   id uuid default gen_random_uuid() primary key,
@@ -48,8 +63,15 @@ create table if not exists public.templates (
   r2_path text not null, -- Path/Prefix inside Cloudflare R2 (e.g. templates/wedding-classic)
   thumbnail_url text, -- URL to the preview image from R2
   price decimal default 0.0,
+  category_id uuid references public.template_categories(id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+create index if not exists templates_category_id_idx on public.templates (category_id);
+
+-- Older databases: templates row may exist without category_id
+alter table public.templates
+  add column if not exists category_id uuid references public.template_categories(id) on delete set null;
 
 alter table public.templates enable row level security;
 

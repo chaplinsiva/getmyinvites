@@ -3,8 +3,17 @@
 import { useState } from "react";
 import { login, signup } from "./actions";
 
-export default function AuthForm({ message }: { message?: string }) {
-  const [isSignUp, setIsSignUp] = useState(false);
+export default function AuthForm({
+  message,
+  nextPath,
+  initialSignUp = false,
+}: {
+  message?: string;
+  /** Post-auth redirect (same-origin path only; validated on server) */
+  nextPath?: string;
+  initialSignUp?: boolean;
+}) {
+  const [isSignUp, setIsSignUp] = useState(initialSignUp);
   const [isPending, setIsPending] = useState(false);
 
   return (
@@ -56,6 +65,7 @@ export default function AuthForm({ message }: { message?: string }) {
           onSubmit={() => setIsPending(true)}
           className="flex flex-col gap-5"
         >
+          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
           <div 
             className={`transition-all duration-300 overflow-hidden flex flex-col gap-4 ${
               isSignUp ? "max-h-24 opacity-100 mb-1" : "max-h-0 opacity-0 mb-0"

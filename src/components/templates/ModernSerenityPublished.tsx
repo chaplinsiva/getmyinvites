@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Playfair_Display, Montserrat } from "next/font/google";
+import InvitationShareDock from "@/components/invitation/InvitationShareDock";
+import { getCoupleFromCustomizedData, invitationFlags } from "@/lib/invitation-share";
 
 const playfair = Playfair_Display({ subsets: ["latin"] });
 const montserrat = Montserrat({ weight: ["300", "400", "500", "600"], subsets: ["latin"] });
@@ -27,6 +29,8 @@ export default function ModernSerenityPublished({ data, invitationId }: { data: 
   const media = data.media || {};
   const t = data.textContent || {};
   const rsvpFields = data.rsvpFields || [];
+  const couple = getCoupleFromCustomizedData(data);
+  const { showRsvp, showShare } = invitationFlags(data);
 
   const [rsvpState, setRsvpState] = useState<any>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,6 +67,16 @@ export default function ModernSerenityPublished({ data, invitationId }: { data: 
 
   return (
     <div className={`relative min-h-screen ${montserrat.className} bg-white text-slate-800`}>
+      {showShare && (
+        <InvitationShareDock
+          shareUrl=""
+          heroImageUrl={media.heroImage}
+          nameFirst={couple.first}
+          nameSecond={couple.second}
+          variant="light"
+        />
+      )}
+
       {/* ─── MakeMyInvites Watermark ── */}
       <a
         href="https://makemyinvites.vercel.app"
@@ -122,62 +136,65 @@ export default function ModernSerenityPublished({ data, invitationId }: { data: 
       </section>
 
       {/* STORY + RSVP SPLIT SECTION */}
-      <section className="w-full flex flex-col md:flex-row items-stretch min-h-[80vh] bg-slate-50 relative z-20">
-        <div className="w-full md:w-1/2 p-16 md:p-32 flex flex-col justify-center items-start">
+      <section className={`w-full flex items-stretch min-h-[80vh] bg-slate-50 relative z-20 ${showRsvp ? "flex-col md:flex-row" : "flex-col"}`}>
+        <div
+          className={`p-16 md:p-32 flex flex-col justify-center items-start ${showRsvp ? "w-full md:w-1/2" : "w-full max-w-3xl mx-auto"}`}
+        >
           <StaticText node={t["story-title"]} className={`${playfair.className} text-4xl md:text-5xl text-slate-900 mb-8`} />
           <StaticText node={t["story-desc"]} className="text-lg text-slate-600 leading-relaxed font-light mb-12 text-left" />
 
-          {/* RSVP CARD */}
-          <div className="bg-white p-8 border border-slate-100 shadow-xl rounded-2xl w-full max-w-sm">
-            <StaticText node={t["rsvp-title"]} className="text-sm font-bold tracking-[0.2em] uppercase text-slate-900 mb-6 text-center block w-full" />
+          {showRsvp && (
+            <div className="bg-white p-8 border border-slate-100 shadow-xl rounded-2xl w-full max-w-sm">
+              <StaticText node={t["rsvp-title"]} className="text-sm font-bold tracking-[0.2em] uppercase text-slate-900 mb-6 text-center block w-full" />
 
-            {submitted ? (
-              <div className="text-center py-8">
-                <p className="text-2xl mb-3">🎉</p>
-                <p className={`${playfair.className} text-xl text-slate-900 mb-2`}>Thank you!</p>
-                <p className="text-slate-500 text-sm">Your RSVP has been received. We can&apos;t wait to celebrate with you.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleRsvpSubmit} className="flex flex-col gap-4">
-                {rsvpFields.map((f: any) =>
-                  f.type === "checkbox" ? (
-                    <label key={f.id} className="flex items-center gap-3 mt-2 cursor-pointer group">
+              {submitted ? (
+                <div className="text-center py-8">
+                  <p className="text-2xl mb-3">🎉</p>
+                  <p className={`${playfair.className} text-xl text-slate-900 mb-2`}>Thank you!</p>
+                  <p className="text-slate-500 text-sm">Your RSVP has been received. We can&apos;t wait to celebrate with you.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleRsvpSubmit} className="flex flex-col gap-4">
+                  {rsvpFields.map((f: any) =>
+                    f.type === "checkbox" ? (
+                      <label key={f.id} className="flex items-center gap-3 mt-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          onChange={(e) => setRsvpState({ ...rsvpState, [f.id]: e.target.checked })}
+                          required={f.required}
+                          className="w-4 h-4 rounded border-slate-300 focus:ring-slate-900"
+                        />
+                        <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">
+                          {f.label} {f.required && <span className="text-rose-500">*</span>}
+                        </span>
+                      </label>
+                    ) : (
                       <input
-                        type="checkbox"
-                        onChange={(e) => setRsvpState({ ...rsvpState, [f.id]: e.target.checked })}
+                        key={f.id}
+                        type={f.type}
                         required={f.required}
-                        className="w-4 h-4 rounded border-slate-300 focus:ring-slate-900"
+                        placeholder={`${f.label}${f.required ? " *" : ""}`}
+                        onChange={(e) => setRsvpState({ ...rsvpState, [f.id]: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-shadow placeholder:text-slate-400"
                       />
-                      <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">
-                        {f.label} {f.required && <span className="text-rose-500">*</span>}
-                      </span>
-                    </label>
-                  ) : (
-                    <input
-                      key={f.id}
-                      type={f.type}
-                      required={f.required}
-                      placeholder={`${f.label}${f.required ? " *" : ""}`}
-                      onChange={(e) => setRsvpState({ ...rsvpState, [f.id]: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-shadow placeholder:text-slate-400"
-                    />
-                  )
-                )}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-4 mt-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center"
-                >
-                  {isSubmitting
-                    ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : (t["btn-rsvp"]?.text || "Send RSVP")}
-                </button>
-              </form>
-            )}
-          </div>
+                    )
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-4 mt-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {isSubmitting
+                      ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : (t["btn-rsvp"]?.text || "Send RSVP")}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="w-full md:w-1/2 min-h-[50vh] md:min-h-full relative overflow-hidden pointer-events-none">
+        <div className={`w-full ${showRsvp ? "md:w-1/2" : ""} min-h-[50vh] md:min-h-full relative overflow-hidden pointer-events-none`}>
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{

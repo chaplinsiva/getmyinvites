@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 
+/** Same-origin path only — prevents open redirects */
+function safeNextPath(raw: unknown): string {
+  if (typeof raw !== "string") return "/";
+  const t = raw.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return "/";
+  if (t.includes("\r") || t.includes("\n")) return "/";
+  return t;
+}
+
 export async function login(formData: FormData) {
   const supabase = await createClient();
 
@@ -15,11 +24,14 @@ export async function login(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword(data);
 
   if (error) {
-    redirect("/login?message=Could not authenticate user");
+    const nextPath = safeNextPath(formData.get("next"));
+    const q = new URLSearchParams({ message: "Could not authenticate user" });
+    if (nextPath !== "/") q.set("next", nextPath);
+    redirect(`/login?${q.toString()}`);
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect(safeNextPath(formData.get("next")));
 }
 
 export async function signup(formData: FormData) {
@@ -39,11 +51,14 @@ export async function signup(formData: FormData) {
   const { error } = await supabase.auth.signUp(data);
 
   if (error) {
-    redirect("/login?message=Could not sign up user");
+    const nextPath = safeNextPath(formData.get("next"));
+    const q = new URLSearchParams({ message: "Could not sign up user" });
+    if (nextPath !== "/") q.set("next", nextPath);
+    redirect(`/login?${q.toString()}`);
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect(safeNextPath(formData.get("next")));
 }
 
 export async function logout() {

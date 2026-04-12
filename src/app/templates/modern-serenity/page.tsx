@@ -89,7 +89,7 @@ function ModernSerenityRsvp({ invitationId }: { invitationId?: string }) {
 
 // ─── TEMPLATE PREVIEW (consumes EditorContext) ─────────────────────────────
 function ModernSerenityPreview() {
-  const { isEditing, media, scrollY } = useEditor();
+  const { isEditing, media, scrollY, showRsvp } = useEditor();
 
   return (
     <div className={`relative min-h-screen ${montserrat.className} bg-white text-slate-800`}>
@@ -175,9 +175,11 @@ function ModernSerenityPreview() {
       </section>
 
       {/* ─── STORY + RSVP ─── */}
-      <section className="w-full flex flex-col-reverse md:flex-row items-stretch bg-slate-50 relative z-20">
+      <section className={`w-full flex flex-col-reverse items-stretch bg-slate-50 relative z-20 ${showRsvp ? "md:flex-row" : ""}`}>
         {/* Content: story text + RSVP form */}
-        <div className="w-full md:w-1/2 px-6 py-12 sm:px-10 sm:py-16 md:px-16 md:py-24 flex flex-col justify-center items-start">
+        <div
+          className={`px-6 py-12 sm:px-10 sm:py-16 md:px-16 md:py-24 flex flex-col justify-center items-start ${showRsvp ? "w-full md:w-1/2" : "w-full max-w-3xl mx-auto"}`}
+        >
           <EditableText
             id="story-title"
             defaultText="Join us."
@@ -191,20 +193,21 @@ function ModernSerenityPreview() {
             className="text-base sm:text-lg text-slate-600 leading-relaxed font-light mb-8 sm:mb-12 text-left"
           />
 
-          {/* RSVP Card */}
-          <div className="bg-white p-6 sm:p-8 border border-slate-100 shadow-xl rounded-2xl w-full max-w-none sm:max-w-sm pointer-events-auto">
-            <EditableText
-              id="rsvp-title"
-              defaultText="Formal RSVP"
-              isEditing={isEditing}
-              className="text-xs sm:text-sm font-bold tracking-[0.2em] uppercase text-slate-900 mb-5 sm:mb-6 text-center block w-full"
-            />
-            <ModernSerenityRsvp />
-          </div>
+          {showRsvp && (
+            <div className="bg-white p-6 sm:p-8 border border-slate-100 shadow-xl rounded-2xl w-full max-w-none sm:max-w-sm pointer-events-auto">
+              <EditableText
+                id="rsvp-title"
+                defaultText="Formal RSVP"
+                isEditing={isEditing}
+                className="text-xs sm:text-sm font-bold tracking-[0.2em] uppercase text-slate-900 mb-5 sm:mb-6 text-center block w-full"
+              />
+              <ModernSerenityRsvp />
+            </div>
+          )}
         </div>
 
         {/* Story image */}
-        <div className="w-full md:w-1/2 min-h-[40vh] sm:min-h-[55vh] md:min-h-full relative overflow-hidden pointer-events-none">
+        <div className={`w-full ${showRsvp ? "md:w-1/2" : "md:w-full"} min-h-[40vh] sm:min-h-[55vh] md:min-h-full relative overflow-hidden pointer-events-none`}>
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { invitationFlags } from "@/lib/invitation-share";
 
 export async function POST(req: Request) {
   try {
@@ -10,6 +11,20 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
+
+    const { data: inv, error: invErr } = await supabase
+      .from("user_invitations")
+      .select("id, customized_data")
+      .eq("id", invitationId)
+      .single();
+
+    if (invErr || !inv) {
+      return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
+    }
+
+    if (!invitationFlags(inv.customized_data).showRsvp) {
+      return NextResponse.json({ error: "RSVP is not enabled for this invitation" }, { status: 403 });
+    }
 
     // Build human-readable responses: { "Your Full Name": "John", "Email": "john@..." }
     const responses: Record<string, any> = {};
