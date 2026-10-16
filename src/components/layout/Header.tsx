@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { logout } from "@/app/login/actions";
 
-export default function Header({ user }: { user: any }) {
+export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -19,42 +19,40 @@ export default function Header({ user }: { user: any }) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const navLinks = [
-    { name: "Home", href: "/" },
-    { name: "Invitations", href: "/invitations" },
-    { name: "About Us", href: "/about" },
-  ];
-
-  // Hide header on editor and published invitation pages
-  const KNOWN_ROUTES = ["/", "/invitations", "/about", "/dashboard", "/login", "/signup"];
-  const isKnownRoute = KNOWN_ROUTES.includes(pathname);
-
-  if (!isKnownRoute) {
+  // Remove header when inside the dedicated full-screen editor
+  if (pathname === "/editor") {
     return null;
   }
 
-  if (user) {
-    navLinks.push({ name: "Dashboard", href: "/dashboard" });
-  }
+  const navLinks = [
+    { name: "Home", href: "/" },
+    { name: "Templates", href: "/templates" },
+    { name: "About Us", href: "/about" },
+  ];
 
   return (
     <header
       className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
         isScrolled
-          ? "bg-white/80 backdrop-blur-md border-b border-slate-200/50 shadow-sm py-4"
-          : "bg-white/50 backdrop-blur-sm py-6"
+          ? "bg-[#FFF9F2]/95 backdrop-blur-md border-b border-[#D4AF70]/25 shadow-sm py-3.5"
+          : "bg-[#FFF9F2]/80 backdrop-blur-md py-4"
       }`}
     >
-      <div className="max-w-7xl mx-auto px-6 md:px-12 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Logo */}
         <Link 
           href="/" 
-          className="text-2xl font-extrabold tracking-tighter text-slate-900 flex items-center gap-2 group"
+          className="flex items-center gap-2 group transition-transform duration-200"
+          aria-label="GetMyInvites Home"
         >
-          <span className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-lg font-serif group-hover:rotate-12 transition-transform duration-300">
-            M
-          </span>
-          MakeMyInvites
+          <Image
+            src="/logos/LogoWithName.png"
+            alt="GetMyInvites"
+            width={180}
+            height={90}
+            priority
+            className="h-10 sm:h-12 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+          />
         </Link>
 
         {/* Desktop Navigation */}
@@ -65,57 +63,47 @@ export default function Header({ user }: { user: any }) {
               <Link
                 key={link.name}
                 href={link.href}
-                className={`text-sm font-medium transition-colors duration-200 relative ${
-                  isActive ? "text-slate-900" : "text-slate-500 hover:text-slate-900"
+                className={`text-sm font-semibold transition-colors duration-200 relative py-1 ${
+                  isActive ? "text-[#6D214F]" : "text-[#29212A]/75 hover:text-[#6D214F]"
                 }`}
               >
                 {link.name}
                 {isActive && (
-                  <span className="absolute -bottom-1.5 left-0 w-full h-[2px] bg-slate-900 rounded-full" />
+                  <span className="absolute -bottom-1 left-0 w-full h-[2.5px] bg-gradient-to-r from-[#6D214F] to-[#D4AF70] rounded-full" />
                 )}
               </Link>
             );
           })}
         </nav>
 
-        {/* Call to Action Button */}
+        {/* Action Button - Templates */}
         <div className="hidden md:flex items-center gap-4">
-          {user ? (
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium text-slate-600">{user.email}</span>
-              <form action={logout}>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-full border border-slate-200 text-slate-900 text-sm font-medium hover:bg-slate-50 transition-all duration-200 active:scale-95"
-                >
-                  Log out
-                </button>
-              </form>
-            </div>
-          ) : (
-            <Link
-              href="/login"
-              className="px-6 py-2.5 rounded-full bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all duration-200 hover:shadow-lg hover:shadow-slate-900/20 active:scale-95"
-            >
-              Sign In
-            </Link>
-          )}
+          <Link
+            href="/templates"
+            className="px-5 py-2.5 rounded-full bg-gradient-to-r from-[#6D214F] via-[#7F265C] to-[#6D214F] text-[#FFF9F2] text-sm font-semibold hover:opacity-95 shadow-md shadow-[#6D214F]/20 hover:shadow-lg border border-[#D4AF70]/30 transition-all duration-200 active:scale-95 flex items-center gap-2"
+          >
+            <span>Templates</span>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#D4AF70]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
         </div>
 
         {/* Mobile Menu Toggle */}
         <button 
-          className="md:hidden flex flex-col gap-1.5 p-2 rounded-md hover:bg-slate-100 transition-colors"
+          aria-label="Toggle navigation menu"
+          className="md:hidden flex flex-col gap-1.5 p-2 rounded-lg hover:bg-[#D4AF70]/10 transition-colors"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         >
-           <span className={`w-6 h-0.5 bg-slate-900 transition-transform duration-300 ${isMobileMenuOpen ? "rotate-45 translate-y-2" : ""}`} />
-           <span className={`w-6 h-0.5 bg-slate-900 transition-opacity duration-300 ${isMobileMenuOpen ? "opacity-0" : ""}`} />
-           <span className={`w-6 h-0.5 bg-slate-900 transition-transform duration-300 ${isMobileMenuOpen ? "-rotate-45 -translate-y-2" : ""}`} />
+           <span className={`w-6 h-0.5 bg-[#29212A] transition-transform duration-300 ${isMobileMenuOpen ? "rotate-45 translate-y-2" : ""}`} />
+           <span className={`w-6 h-0.5 bg-[#29212A] transition-opacity duration-300 ${isMobileMenuOpen ? "opacity-0" : ""}`} />
+           <span className={`w-6 h-0.5 bg-[#29212A] transition-transform duration-300 ${isMobileMenuOpen ? "-rotate-45 -translate-y-2" : ""}`} />
         </button>
       </div>
 
       {/* Mobile Menu Dropdown */}
       <div 
-        className={`md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-100 shadow-xl transition-all duration-300 overflow-hidden ${
+        className={`md:hidden absolute top-full left-0 w-full bg-[#FFF9F2]/95 backdrop-blur-md border-b border-[#D4AF70]/20 shadow-xl transition-all duration-300 overflow-hidden ${
           isMobileMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
         }`}
       >
@@ -125,32 +113,20 @@ export default function Header({ user }: { user: any }) {
               key={link.name}
               href={link.href}
               onClick={() => setIsMobileMenuOpen(false)}
-              className={`text-base font-medium ${
-                pathname === link.href ? "text-slate-900" : "text-slate-500"
+              className={`text-base font-semibold ${
+                pathname === link.href ? "text-[#6D214F]" : "text-[#29212A]/80 hover:text-[#6D214F]"
               }`}
             >
               {link.name}
             </Link>
           ))}
-          {user ? (
-            <form action={logout} className="mt-2 w-full">
-               <button
-                 type="submit"
-                 className="w-full px-6 py-3 rounded-full border border-slate-200 text-slate-900 font-medium hover:bg-slate-50"
-                 onClick={() => setIsMobileMenuOpen(false)}
-               >
-                 Log out
-               </button>
-            </form>
-          ) : (
-            <Link
-              href="/login"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="mt-2 text-center w-full px-6 py-3 rounded-full bg-slate-900 text-white font-medium hover:bg-slate-800"
-            >
-              Sign In
-            </Link>
-          )}
+          <Link
+            href="/templates"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="mt-2 text-center w-full px-6 py-3 rounded-full bg-gradient-to-r from-[#6D214F] to-[#7F265C] text-[#FFF9F2] font-semibold shadow-md border border-[#D4AF70]/30"
+          >
+            Explore Templates
+          </Link>
         </div>
       </div>
     </header>

@@ -37,6 +37,13 @@ values
     'Teal ocean gradients and beach-weekend energy.',
     'templates/coastal-breeze',
     'https://images.unsplash.com/photo-1507525428037-b723cf961d3e?auto=format&fit=crop&q=80&w=800'
+  ),
+  (
+    'sophisticated-wedding-canva',
+    'Sophisticated Wedding (Canva)',
+    'Elegant Canva invitation embed with responsive full-width preview.',
+    'templates/sophisticated-wedding-canva',
+    'https://images.unsplash.com/photo-1519741497674-7470cc7b0d39?auto=format&fit=crop&q=80&w=800'
   )
 on conflict (slug) do update set
   name = excluded.name,

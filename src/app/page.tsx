@@ -1,79 +1,127 @@
 import Hero from "@/components/home/Hero";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Home() {
   return (
-    <div className="w-full">
+    <div className="w-full bg-[#FFF9F2]">
       <Hero />
-      
-      {/* Features Section */}
-      <section className="w-full py-24 px-6 md:px-12 bg-white relative">
+
+      {/* Feature Highlights Section */}
+      <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-[#FAF2E8]/60 relative border-t border-[#D4AF70]/20">
         <div className="max-w-7xl mx-auto space-y-16">
-          <div className="text-center max-w-2xl mx-auto space-y-4">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-slate-900 font-serif">Seamlessly crafted for your big day</h2>
-            <p className="text-lg text-slate-600 font-light">
-              We provide all the tools you need to design, send, and manage your wedding invitations in one beautiful platform.
+          <div className="text-center max-w-3xl mx-auto space-y-4">
+            <span className="px-3.5 py-1.5 rounded-full bg-[#6D214F]/10 border border-[#6D214F]/20 text-[#6D214F] text-xs font-bold uppercase tracking-wider">
+              Easy & Fast
+            </span>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-[#29212A] font-serif">
+              Everything You Need to Create Your Perfect Invite
+            </h2>
+            <p className="text-base sm:text-lg text-[#29212A]/75 font-light">
+              No complicated design software or login required. Just open the editor, customize your wedding text, and download immediately.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                title: "Stunning Templates",
-                desc: "Start with beautifully designed templates and customize them to fit your exact wedding theme perfectly.",
-                icon: "✨"
-              },
-              {
-                title: "Easy RSVP Tracking",
-                desc: "No more tracking down guests. Manage RSVPs, dietary restrictions, and plus-ones from a simple dashboard.",
-                icon: "💌"
-              },
-              {
-                title: "Instant Delivery",
-                desc: "Send your beautiful digital invitations via email, WhatsApp, or text message instantly to your guest list.",
-                icon: "🚀"
-              }
-            ].map((feature, i) => (
-              <div key={i} className="p-8 rounded-3xl bg-slate-50 border border-slate-100 hover:shadow-xl hover:shadow-indigo-900/5 transition-all duration-300">
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-2xl mb-6">
-                  {feature.icon}
+            <div className="p-8 rounded-3xl bg-[#FFF9F2] border border-[#D4AF70]/30 shadow-sm hover:shadow-xl hover:shadow-[#6D214F]/10 hover:border-[#D4AF70] transition-all duration-300 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-white border border-[#D4AF70]/40 flex items-center justify-center text-2xl shadow-sm text-[#6D214F]">
+                  🎨
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
-                <p className="text-slate-600 leading-relaxed">{feature.desc}</p>
+                <h3 className="text-xl font-bold text-[#29212A] font-serif">Canva-Style Drag & Drop Editor</h3>
+                <p className="text-[#29212A]/75 text-sm leading-relaxed">
+                  Click and drag any text on the poster. Choose from royal calligraphy fonts (Great Vibes, Playfair, Cinzel, Rozha One) and traditional Indian wedding colors like royal burgundy and champagne gold.
+                </p>
               </div>
-            ))}
+              <div className="pt-6 border-t border-[#D4AF70]/20 mt-6">
+                <Link href="/editor" className="text-xs font-bold text-[#6D214F] hover:text-[#56183D] flex items-center gap-1">
+                  Try the Editor →
+                </Link>
+              </div>
+            </div>
+
+            <div className="p-8 rounded-3xl bg-[#FFF9F2] border border-[#D4AF70]/30 shadow-sm hover:shadow-xl hover:shadow-[#6D214F]/10 hover:border-[#D4AF70] transition-all duration-300 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-white border border-[#D4AF70]/40 flex items-center justify-center text-2xl shadow-sm">
+                  ⚡
+                </div>
+                <h3 className="text-xl font-bold text-[#29212A] font-serif">Free Download (Watermarked)</h3>
+                <p className="text-[#29212A]/75 text-sm leading-relaxed">
+                  Want to draft and show family members before finalizing? Download unlimited instant previews with a subtle watermark for 100% free with no login needed.
+                </p>
+              </div>
+              <div className="pt-6 border-t border-[#D4AF70]/20 mt-6">
+                <span className="text-xs font-bold text-[#6D214F]">Instant PNG Export</span>
+              </div>
+            </div>
+
+            <div className="p-8 rounded-3xl bg-[#FFF9F2] border border-[#D4AF70]/30 shadow-sm hover:shadow-xl hover:shadow-[#6D214F]/10 hover:border-[#D4AF70] transition-all duration-300 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-white border border-[#D4AF70]/40 flex items-center justify-center text-2xl shadow-sm text-[#D4AF70]">
+                  💎
+                </div>
+                <h3 className="text-xl font-bold text-[#29212A] font-serif">Pay & Download Ultra HD</h3>
+                <p className="text-[#29212A]/75 text-sm leading-relaxed">
+                  Ready to send to your guests? Pay just ₹49 via UPI/QR code or Card to unlock the watermark-free Ultra HD 300 DPI poster ready for WhatsApp & physical print.
+                </p>
+              </div>
+              <div className="pt-6 border-t border-[#D4AF70]/20 mt-6">
+                <span className="text-xs font-bold text-[#D4AF70]">Zero Watermark • Print Ready</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="w-full py-24 px-6 md:px-12 bg-slate-900 relative overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full max-w-3xl bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-500/20 via-transparent to-transparent blur-3xl"></div>
-        
-        <div className="max-w-4xl mx-auto text-center space-y-8 relative z-10">
-          <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-white font-serif">
-            Ready to create something beautiful?
+      {/* Visual Step-by-Step Guide */}
+      <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-[#FFF9F2]">
+        <div className="max-w-6xl mx-auto space-y-12">
+          <div className="text-center space-y-3">
+            <h2 className="text-3xl font-bold text-[#29212A] font-serif">How to Make Your Wedding Invitation</h2>
+            <p className="text-[#29212A]/70 text-sm">3 simple steps to a stunning wedding poster</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+            <div className="space-y-3 p-6 rounded-2xl bg-[#FAF2E8]/80 border border-[#D4AF70]/25">
+              <div className="w-10 h-10 rounded-full bg-[#6D214F] text-[#FFF9F2] font-bold text-sm flex items-center justify-center mx-auto border border-[#D4AF70]/30 shadow-sm">1</div>
+              <h4 className="font-bold text-[#29212A]">Open the Poster Editor</h4>
+              <p className="text-xs text-[#29212A]/70">Click &quot;Design Poster&quot; to load our hand-illustrated Indian chibi wedding poster in your browser.</p>
+            </div>
+
+            <div className="space-y-3 p-6 rounded-2xl bg-[#FAF2E8]/80 border border-[#D4AF70]/25">
+              <div className="w-10 h-10 rounded-full bg-[#8E2D67] text-[#FFF9F2] font-bold text-sm flex items-center justify-center mx-auto border border-[#D4AF70]/30 shadow-sm">2</div>
+              <h4 className="font-bold text-[#29212A]">Customize Text & Fonts</h4>
+              <p className="text-xs text-[#29212A]/70">Type couple names, date, venue, and drag text blocks anywhere you want on the invitation.</p>
+            </div>
+
+            <div className="space-y-3 p-6 rounded-2xl bg-[#FAF2E8]/80 border border-[#D4AF70]/25">
+              <div className="w-10 h-10 rounded-full bg-[#D4AF70] text-[#29212A] font-bold text-sm flex items-center justify-center mx-auto border border-[#D4AF70]/50 shadow-sm">3</div>
+              <h4 className="font-bold text-[#29212A]">Download & Share</h4>
+              <p className="text-xs text-[#29212A]/70">Download for free with a watermark, or unlock clean Ultra HD (₹49) and share directly via WhatsApp!</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Big Action CTA Banner */}
+      <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-tr from-[#29212A] via-[#401931] to-[#29212A] relative overflow-hidden text-[#FFF9F2] text-center border-t border-[#D4AF70]/25">
+        <div className="max-w-3xl mx-auto space-y-6 relative z-10">
+          <h2 className="text-3xl sm:text-5xl font-bold font-serif tracking-tight text-[#D4AF70]">
+            Start Designing Your Invitation Today
           </h2>
-          <p className="text-xl text-slate-300 font-light max-w-2xl mx-auto">
-            Join thousands of happy couples who trusted MakeMyInvites for their special day. 
-            Start designing for free today.
+          <p className="text-base sm:text-lg text-[#FFF9F2]/80 font-light">
+            No registration needed. Open the Canva-style editor right now and preview your personalized wedding poster in under 60 seconds.
           </p>
           <div className="pt-4">
-            <Link 
-              href="/invitations"
-              className="inline-flex px-8 py-4 rounded-full bg-white text-slate-900 font-medium hover:bg-slate-100 transition-all duration-300 hover:shadow-xl hover:shadow-white/10 active:scale-95 items-center justify-center gap-2"
+            <Link
+              href="/editor"
+              className="inline-flex px-8 py-4 rounded-full bg-gradient-to-r from-[#6D214F] via-[#D4AF70] to-[#6D214F] text-[#FFF9F2] font-bold text-base shadow-2xl hover:brightness-110 active:scale-95 transition-all border border-[#D4AF70]/40"
             >
-              Browse Templates
+              Open Poster Editor Now →
             </Link>
           </div>
         </div>
       </section>
-      
-      {/* Footer Placeholder */}
-      <footer className="w-full py-12 text-center bg-slate-950 text-slate-500 text-sm">
-        <p>© 2026 MakeMyInvites. Crafted with love.</p>
-      </footer>
     </div>
   );
 }

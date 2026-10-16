@@ -1,7 +1,7 @@
 # Architecture & Strategy
 
 ## Project Overview
-"MakeMyInvites" is a Next.js (App Router) based application designed to allow users to create, customize, and share digital wedding invitations.
+"GetMyInvites" is a Next.js (App Router) based application designed to allow users to create, customize, and share digital wedding invitations.
 
 ## Tech Stack
 - **Framework**: Next.js 14+ (App Router)

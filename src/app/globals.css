@@ -1,26 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@400;600;700;800;900&family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Rozha+One&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #FFF9F2;
+  --foreground: #29212A;
+  --brand-burgundy: #6D214F;
+  --brand-gold: #D4AF70;
+  --brand-ivory: #FFF9F2;
+  --brand-charcoal: #29212A;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-burgundy: #6D214F;
+  --color-burgundy-hover: #56183D;
+  --color-burgundy-light: #8E2D67;
+  --color-gold: #D4AF70;
+  --color-gold-hover: #C59E5D;
+  --color-gold-light: #E4C896;
+  --color-ivory: #FFF9F2;
+  --color-ivory-warm: #FAF2E8;
+  --color-charcoal: #29212A;
+  --color-charcoal-muted: #5A4E5C;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', serif;
+}
+
+.font-great-vibes {
+  font-family: 'Great Vibes', cursive;
+}
+
+.font-playfair {
+  font-family: 'Playfair Display', serif;
+}
+
+.font-alex-brush {
+  font-family: 'Alex Brush', cursive;
+}
+
+.font-montserrat {
+  font-family: 'Montserrat', sans-serif;
+}
+
+.font-rozha {
+  font-family: 'Rozha One', serif;
 }

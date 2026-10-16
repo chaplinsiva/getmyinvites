@@ -1,45 +1,63 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/layout/Header";
-import { createClient } from "@/utils/supabase/server";
+import Footer from "@/components/layout/Footer";
 import { Analytics } from "@vercel/analytics/next";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "MakeMyInvites",
-  description: "Create your perfect wedding invitations",
+  metadataBase: new URL("https://getmyinvites.com"),
+  title: "GetMyInvites | Online Indian Wedding Invitation Poster Maker",
+  description: "Create, customize and download stunning traditional and modern wedding invitation posters with our Canva-like editor. Instant free & HD downloads.",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/favicon.ico" },
+      { url: "/logos/LogoOnly.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: ["/favicon.ico"],
+  },
+  openGraph: {
+    title: "GetMyInvites | Every Occasion. Beautifully Invited.",
+    description: "Create, customize and download stunning traditional and modern wedding invitation posters with our Canva-like editor.",
+    url: "https://getmyinvites.com",
+    siteName: "GetMyInvites",
+    images: [
+      {
+        url: "/logos/LogoWithNameandTagline.png",
+        width: 1774,
+        height: 887,
+        alt: "GetMyInvites - Every Occasion. Beautifully Invited.",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GetMyInvites | Every Occasion. Beautifully Invited.",
+    description: "Create, customize and download stunning traditional and modern wedding invitation posters with our Canva-like editor.",
+    images: ["/logos/LogoWithNameandTagline.png"],
+  },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className="h-full antialiased font-sans"
     >
-      <body className="min-h-full flex flex-col">
-        <Header user={user} />
+      <body className="min-h-full flex flex-col bg-[#FFF9F2] text-[#29212A] selection:bg-[#6D214F] selection:text-[#FFF9F2]">
+        <Header />
         <main className="flex-1 w-full relative">
           {children}
         </main>
+        <Footer />
         <Analytics />
       </body>
     </html>

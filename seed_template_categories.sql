@@ -17,7 +17,7 @@ update public.templates set category_id = (select id from public.template_catego
 where slug in ('midnight-botanica', 'sunrise-garden', 'royal-mandala');
 
 update public.templates set category_id = (select id from public.template_categories where slug = 'glamour' limit 1)
-where slug = 'art-deco-glam';
+where slug in ('art-deco-glam', 'sophisticated-wedding-canva');
 
 update public.templates set category_id = (select id from public.template_categories where slug = 'coastal' limit 1)
 where slug = 'coastal-breeze';
