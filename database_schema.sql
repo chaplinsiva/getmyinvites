@@ -140,3 +140,31 @@ create policy "Users can view RSVPs for their own invitations."
       where id = rsvps.invitation_id and user_id = auth.uid()
     )
   );
+
+-- Create payments table to track Razorpay transactions
+create table if not exists public.payments (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete set null,
+  razorpay_order_id text not null unique,
+  razorpay_payment_id text unique,
+  razorpay_signature text,
+  amount integer not null, -- amount in paise (e.g. 4900 for ₹49, 9900 for ₹99)
+  currency text not null default 'INR',
+  status text not null default 'created', -- 'created', 'captured', 'failed'
+  item_type text not null, -- 'poster', 'video'
+  item_title text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.payments enable row level security;
+
+create policy "Users can view their own payments."
+  on public.payments for select
+  using ( auth.uid() = user_id );
+
+create policy "Anyone can insert payment records."
+  on public.payments for insert
+  with check ( true );
+

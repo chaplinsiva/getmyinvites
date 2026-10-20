@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { initiateRazorpayPayment } from "@/utils/razorpayClient";
+
 
 interface TextLayer {
   id: string;
@@ -28,7 +30,7 @@ const INITIAL_LAYERS: TextLayer[] = [
     fontFamily: "Rozha One",
     fontSize: 18,
     color: "#8B1E1E",
-    fontWeight: "700",
+    fontWeight: "400",
     fontStyle: "normal",
     textTransform: "none",
     letterSpacing: 2,
@@ -202,16 +204,53 @@ const PRESETS = [
   },
 ];
 
+export const getFontFamily = (name: string): string => {
+  switch (name) {
+    case "Great Vibes":
+      return "'Great Vibes', cursive";
+    case "Alex Brush":
+      return "'Alex Brush', cursive";
+    case "Playfair Display":
+      return "'Playfair Display', serif";
+    case "Cinzel":
+      return "'Cinzel', serif";
+    case "Rozha One":
+      return "'Rozha One', serif";
+    case "Montserrat":
+      return "'Montserrat', sans-serif";
+    default:
+      return `"${name}", serif, sans-serif`;
+  }
+};
+
 export default function PosterEditorPage() {
   const [layers, setLayers] = useState<TextLayer[]>(INITIAL_LAYERS);
   const [selectedId, setSelectedId] = useState<string>("layer-3");
-  const [activeTab, setActiveTab] = useState<"add" | "style" | "text" | "presets">("add");
+  const [activeTab, setActiveTab] = useState<"quick" | "style" | "add" | "text" | "presets">("quick");
   const [customTextDraft, setCustomTextDraft] = useState("");
+  const [fontsLoaded, setFontsLoaded] = useState(false);
   
   // Media Mode: "poster" or "video"
   const [mediaMode, setMediaMode] = useState<"poster" | "video">("poster");
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(true);
+
+  // Preload and guarantee all wedding fonts are ready on mobile devices
+  useEffect(() => {
+    if (typeof document !== "undefined" && "fonts" in document) {
+      const fontsToWarm = [
+        '400 16px "Great Vibes"',
+        '700 16px "Playfair Display"',
+        '700 16px "Cinzel"',
+        '400 16px "Rozha One"',
+        '400 16px "Alex Brush"',
+        '600 16px "Montserrat"',
+      ];
+      Promise.all(fontsToWarm.map((f) => document.fonts.load(f).catch(() => {})))
+        .then(() => setFontsLoaded(true))
+        .catch(() => setFontsLoaded(true));
+    }
+  }, []);
 
   // Initialize mediaMode from URL parameter (e.g., ?mode=video or ?mode=poster)
   useEffect(() => {
@@ -237,12 +276,27 @@ export default function PosterEditorPage() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStatusText, setRenderStatusText] = useState("");
 
+  const [verifiedPaymentId, setVerifiedPaymentId] = useState<string | null>(null);
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+
   const [showToast, setShowToast] = useState<string | null>(null);
+
 
   const posterContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const draggingIdRef = useRef<string | null>(null);
   const dragStartPosRef = useRef<{ clientX: number; clientY: number; initialX: number; initialY: number } | null>(null);
+  const hasMovedRef = useRef<boolean>(false);
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editingLayerId && inlineInputRef.current) {
+      inlineInputRef.current.focus();
+      const len = inlineInputRef.current.value.length;
+      inlineInputRef.current.setSelectionRange(len, len);
+    }
+  }, [editingLayerId]);
 
   const selectedLayer = layers.find((l) => l.id === selectedId) || layers[0];
 
@@ -410,7 +464,13 @@ export default function PosterEditorPage() {
 
   // Canvas Drag Handling (Touch & Mouse Optimized)
   const handlePointerDown = (e: React.PointerEvent, layerId: string) => {
+    // If currently editing this layer inline, allow standard cursor / selection
+    if (editingLayerId === layerId) {
+      return;
+    }
+
     e.stopPropagation();
+    hasMovedRef.current = false;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } catch {}
@@ -434,6 +494,10 @@ export default function PosterEditorPage() {
       const rect = posterContainerRef.current.getBoundingClientRect();
       const deltaXPixels = e.clientX - dragStartPosRef.current.clientX;
       const deltaYPixels = e.clientY - dragStartPosRef.current.clientY;
+
+      if (Math.abs(deltaXPixels) > 3 || Math.abs(deltaYPixels) > 3) {
+        hasMovedRef.current = true;
+      }
 
       const deltaXPercent = (deltaXPixels / rect.width) * 100;
       const deltaYPercent = (deltaYPixels / rect.height) * 100;
@@ -467,6 +531,12 @@ export default function PosterEditorPage() {
 
   // HTML5 Canvas Export Engine for Poster / Snapshot
   const generatePosterImage = async (withWatermark: boolean): Promise<string> => {
+    if (typeof document !== "undefined" && "fonts" in document) {
+      try {
+        await document.fonts.ready;
+      } catch {}
+    }
+
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
       const targetWidth = 1144;
@@ -498,7 +568,8 @@ export default function PosterEditorPage() {
           const posY = (layer.y / 100) * targetHeight;
           const scaledFontSize = Math.round(layer.fontSize * scaleFactor);
 
-          ctx.font = `${layer.fontStyle} ${layer.fontWeight} ${scaledFontSize}px "${layer.fontFamily}", serif, sans-serif`;
+          const fontFace = getFontFamily(layer.fontFamily);
+          ctx.font = `${layer.fontStyle} ${layer.fontWeight} ${scaledFontSize}px ${fontFace}`;
           ctx.fillStyle = layer.color;
           ctx.textAlign = layer.textAlign;
           ctx.textBaseline = "middle";
@@ -521,11 +592,11 @@ export default function PosterEditorPage() {
           ctx.restore();
         });
 
-        // Add Watermark if requested
+        // Add Watermark if requested (Softened Opacity)
         if (withWatermark) {
           ctx.save();
           ctx.rotate((-28 * Math.PI) / 180);
-          ctx.fillStyle = "rgba(180, 83, 9, 0.22)";
+          ctx.fillStyle = "rgba(180, 83, 9, 0.08)";
           ctx.font = '700 36px "Montserrat", sans-serif';
           ctx.textAlign = "center";
 
@@ -536,16 +607,16 @@ export default function PosterEditorPage() {
           }
           ctx.restore();
 
-          // Branded bottom watermark badge bar
+          // Branded bottom watermark badge bar with reduced opacity
           ctx.save();
-          ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
-          ctx.fillRect(0, targetHeight - 70, targetWidth, 70);
+          ctx.fillStyle = "rgba(15, 23, 42, 0.55)";
+          ctx.fillRect(0, targetHeight - 56, targetWidth, 56);
 
-          ctx.fillStyle = "#FFFFFF";
-          ctx.font = '600 22px "Montserrat", sans-serif';
+          ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.font = '600 20px "Montserrat", sans-serif';
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText("Created with GetMyInvites.com  •  Upgrade to Remove Watermark", targetWidth / 2, targetHeight - 35);
+          ctx.fillText("Created with GetMyInvites.com  •  Upgrade to Remove Watermark", targetWidth / 2, targetHeight - 28);
           ctx.restore();
         }
 
@@ -582,10 +653,11 @@ export default function PosterEditorPage() {
     }
   };
 
-  // Poster Payment Handler
+  // Poster Payment Handler with Razorpay Pipeline
   const handleProcessPosterPayment = async () => {
-    setPosterPaymentStep("processing");
-    setTimeout(async () => {
+    // If already verified previously in this session, download clean poster immediately
+    if (verifiedPaymentId) {
+      setPosterPaymentStep("processing");
       try {
         const dataUrl = await generatePosterImage(false);
         const link = document.createElement("a");
@@ -596,9 +668,42 @@ export default function PosterEditorPage() {
       } catch (err) {
         console.error(err);
         setPosterPaymentStep("pay");
-        alert("Payment verified, but error exporting poster. Please retry.");
+        alert("Error exporting poster. Please retry.");
       }
-    }, 1500);
+      return;
+    }
+
+    setIsPaymentLoading(true);
+    await initiateRazorpayPayment({
+      itemType: "poster",
+      itemTitle: "GetMyInvites - Traditional Chibi Poster HD Clean",
+      preferredMethod: selectedPaymentMethod,
+      onSuccess: async ({ paymentId }) => {
+        setVerifiedPaymentId(paymentId);
+        setIsPaymentLoading(false);
+        setShowToast(`Payment verified! ID: ${paymentId}`);
+        setPosterPaymentStep("processing");
+
+        try {
+          const dataUrl = await generatePosterImage(false);
+          const link = document.createElement("a");
+          link.download = "GetMyInvites-Wedding-Poster-HD-Clean.png";
+          link.href = dataUrl;
+          link.click();
+          setPosterPaymentStep("success");
+        } catch (err) {
+          console.error(err);
+          setPosterPaymentStep("pay");
+          alert("Payment verified, but error exporting poster. Please retry.");
+        }
+      },
+      onError: (err) => {
+        setIsPaymentLoading(false);
+      },
+      onDismiss: () => {
+        setIsPaymentLoading(false);
+      },
+    });
   };
 
   // Generates 1080x1920 transparent PNG overlay with custom typography for FFmpeg WASM
@@ -643,8 +748,8 @@ export default function PosterEditorPage() {
     return canvas.toDataURL("image/png");
   };
 
-  // Video Render Payment & Client-Side FFmpeg WASM Handler
-  const handleProcessVideoPayment = async () => {
+  // Dedicated 1080p FFmpeg WebAssembly Video Renderer
+  const executeVideoRendering = async () => {
     setVideoPayStep("rendering");
     setRenderProgress(10);
     setRenderStatusText("Loading FFmpeg WebAssembly (WASM) Engine...");
@@ -661,7 +766,6 @@ export default function PosterEditorPage() {
       });
 
       ffmpeg.on("progress", ({ progress }) => {
-        // Progress reports between 0.0 and 1.0
         const pct = Math.min(94, Math.max(50, Math.round(progress * 100)));
         setRenderProgress(pct);
         setRenderStatusText(`Encoding video frames with FFmpeg WASM: ${pct}%...`);
@@ -687,7 +791,6 @@ export default function PosterEditorPage() {
       setRenderProgress(35);
       setRenderStatusText("Rendering 1080p typography overlay from your design...");
 
-      // Generate pristine transparent overlay with the user's custom fonts and positions
       const overlayDataUrl = generateTextOverlayDataUrl(layers);
 
       setRenderProgress(45);
@@ -699,7 +802,6 @@ export default function PosterEditorPage() {
       setRenderProgress(55);
       setRenderStatusText("Compositing video frames with text overlay via FFmpeg WASM...");
 
-      // Execute FFmpeg command to overlay text onto video with ultrafast preset and 4:2:0 chroma
       await ffmpeg.exec([
         "-i", "input.mp4",
         "-i", "overlay.png",
@@ -734,7 +836,6 @@ export default function PosterEditorPage() {
       console.error("FFmpeg WASM processing exception:", err);
       setRenderStatusText("Finalizing high-res video export...");
 
-      // Reliable fallback in case WebAssembly memory is constrained on older mobile devices
       const response = await fetch("/wedding-animation.mp4");
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
@@ -752,6 +853,35 @@ export default function PosterEditorPage() {
       }, 400);
     }
   };
+
+  // Video Payment Handler with Razorpay Pipeline
+  const handleProcessVideoPayment = async () => {
+    // If already verified previously in this session, proceed straight to render
+    if (verifiedPaymentId) {
+      await executeVideoRendering();
+      return;
+    }
+
+    setIsPaymentLoading(true);
+    await initiateRazorpayPayment({
+      itemType: "video",
+      itemTitle: "GetMyInvites - 1080p Animated Video Invitation",
+      preferredMethod: selectedPaymentMethod,
+      onSuccess: async ({ paymentId }) => {
+        setVerifiedPaymentId(paymentId);
+        setIsPaymentLoading(false);
+        setShowToast(`Payment verified! ID: ${paymentId}`);
+        await executeVideoRendering();
+      },
+      onError: (err) => {
+        setIsPaymentLoading(false);
+      },
+      onDismiss: () => {
+        setIsPaymentLoading(false);
+      },
+    });
+  };
+
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col pt-0 select-none">
@@ -855,20 +985,20 @@ export default function PosterEditorPage() {
         {/* Inspector Sidebar (Order-2 on Mobile, Order-1 on Desktop) */}
         <div className="order-2 lg:order-1 w-full lg:w-96 bg-slate-950/95 backdrop-blur-md border-t lg:border-t-0 lg:border-r border-slate-800/80 flex flex-col z-10 shrink-0 max-h-none lg:max-h-[calc(100vh-64px)] overflow-y-visible lg:overflow-y-auto">
           {/* Navigation Tabs */}
-          <div className="grid grid-cols-4 border-b border-slate-800 text-xs font-semibold text-center sticky top-0 bg-slate-950 z-10 shadow-sm">
+          <div className="flex border-b border-slate-800 text-xs font-semibold text-center sticky top-0 bg-slate-950 z-10 shadow-sm overflow-x-auto no-scrollbar">
             <button
-              onClick={() => setActiveTab("add")}
-              className={`py-3 transition-colors flex items-center justify-center gap-1 ${
-                activeTab === "add"
+              onClick={() => setActiveTab("quick")}
+              className={`flex-1 min-w-[70px] py-3 transition-colors flex items-center justify-center gap-1 shrink-0 ${
+                activeTab === "quick"
                   ? "text-amber-400 border-b-2 border-amber-500 bg-slate-900/50"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              ➕ Text
+              ⚡ Quick
             </button>
             <button
               onClick={() => setActiveTab("style")}
-              className={`py-3 transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 min-w-[70px] py-3 transition-colors flex items-center justify-center gap-1 shrink-0 ${
                 activeTab === "style"
                   ? "text-amber-400 border-b-2 border-amber-500 bg-slate-900/50"
                   : "text-slate-400 hover:text-slate-200"
@@ -877,8 +1007,18 @@ export default function PosterEditorPage() {
               🎨 Style
             </button>
             <button
+              onClick={() => setActiveTab("add")}
+              className={`flex-1 min-w-[70px] py-3 transition-colors flex items-center justify-center gap-1 shrink-0 ${
+                activeTab === "add"
+                  ? "text-amber-400 border-b-2 border-amber-500 bg-slate-900/50"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              ➕ Text
+            </button>
+            <button
               onClick={() => setActiveTab("text")}
-              className={`py-3 transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 min-w-[70px] py-3 transition-colors flex items-center justify-center gap-1 shrink-0 ${
                 activeTab === "text"
                   ? "text-amber-400 border-b-2 border-amber-500 bg-slate-900/50"
                   : "text-slate-400 hover:text-slate-200"
@@ -888,13 +1028,13 @@ export default function PosterEditorPage() {
             </button>
             <button
               onClick={() => setActiveTab("presets")}
-              className={`py-3 transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 min-w-[70px] py-3 transition-colors flex items-center justify-center gap-1 shrink-0 ${
                 activeTab === "presets"
                   ? "text-amber-400 border-b-2 border-amber-500 bg-slate-900/50"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              ⚡ Presets
+              ✨ Presets
             </button>
           </div>
 
@@ -916,6 +1056,191 @@ export default function PosterEditorPage() {
                 Switch to {mediaMode === "poster" ? "Video" : "Poster"}
               </button>
             </div>
+
+            {/* TAB: QUICK EDIT (SIMPLE FOR MOBILE EDITORS) */}
+            {activeTab === "quick" && (
+              <div className="space-y-4">
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 border border-amber-500/30 flex items-start gap-2.5">
+                  <span className="text-lg">📱</span>
+                  <div>
+                    <h4 className="text-xs font-bold text-amber-300">Simple Mobile Editor</h4>
+                    <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                      Fill in your couple names, date, and venue below. The card above updates in real-time with full royal fonts!
+                    </p>
+                  </div>
+                </div>
+
+                {/* All layers sorted by vertical position for natural card reading order */}
+                <div className="space-y-3">
+                  {[...layers]
+                    .sort((a, b) => a.y - b.y)
+                    .map((layer) => {
+                      const isSelected = selectedId === layer.id;
+                      let fieldLabel = "Card Text Field";
+                      let fieldIcon = "📝";
+                      if (layer.id === "layer-1" || layer.text.includes("गणेशाय")) {
+                        fieldLabel = "Top Blessing / Mantra";
+                        fieldIcon = "🕉️";
+                      } else if (layer.id === "layer-2" || layer.text.includes("FAMILIES")) {
+                        fieldLabel = "Invitation Header";
+                        fieldIcon = "📜";
+                      } else if (layer.id === "layer-3") {
+                        fieldLabel = "Groom Name";
+                        fieldIcon = "🤵";
+                      } else if (layer.id === "layer-4" || layer.text === "&") {
+                        fieldLabel = "Connector";
+                        fieldIcon = "✨";
+                      } else if (layer.id === "layer-5") {
+                        fieldLabel = "Bride Name";
+                        fieldIcon = "👰";
+                      } else if (layer.id === "layer-6") {
+                        fieldLabel = "Invitation Line";
+                        fieldIcon = "💌";
+                      } else if (layer.id === "layer-7" || layer.text.includes("DECEMBER") || layer.text.includes("2026") || layer.text.includes("PM")) {
+                        fieldLabel = "Date & Time";
+                        fieldIcon = "📅";
+                      } else if (layer.id === "layer-8" || layer.text.includes("Palace") || layer.text.includes("Resort")) {
+                        fieldLabel = "Venue & Location";
+                        fieldIcon = "📍";
+                      } else if (layer.id === "layer-9" || layer.text.includes("RSVP")) {
+                        fieldLabel = "RSVP & Family Contact";
+                        fieldIcon = "📞";
+                      }
+
+                      return (
+                        <div
+                          key={layer.id}
+                          className={`p-3 rounded-2xl border transition-all ${
+                            isSelected
+                              ? "bg-slate-900 border-amber-500 shadow-md ring-1 ring-amber-500/50"
+                              : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                              <span>{fieldIcon}</span>
+                              <span>{fieldLabel}</span>
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="text-[10px] text-slate-400 px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/50"
+                                style={{ fontFamily: getFontFamily(layer.fontFamily) }}
+                              >
+                                {layer.fontFamily}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setSelectedId(layer.id);
+                                  setActiveTab("style");
+                                }}
+                                className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold"
+                                title="Open full styling for this text"
+                              >
+                                Style ⚙️
+                              </button>
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={layer.text}
+                            onFocus={() => setSelectedId(layer.id)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setLayers((prev) =>
+                                prev.map((l) => (l.id === layer.id ? { ...l, text: val } : l))
+                              );
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none transition-colors"
+                            style={{ fontFamily: getFontFamily(layer.fontFamily) }}
+                          />
+
+                          {/* Quick Font & Color row when layer is active */}
+                          {isSelected && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-2">
+                              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                                {FONTS.map((font) => (
+                                  <button
+                                    key={font.name}
+                                    onClick={() => {
+                                      setLayers((prev) =>
+                                        prev.map((l) => (l.id === layer.id ? { ...l, fontFamily: font.name } : l))
+                                      );
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] whitespace-nowrap shrink-0 border ${
+                                      layer.fontFamily === font.name
+                                        ? "bg-amber-500 text-slate-950 font-bold border-amber-400"
+                                        : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750"
+                                    }`}
+                                    style={{ fontFamily: getFontFamily(font.name) }}
+                                  >
+                                    {font.name}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                                  {COLOR_SWATCHES.map((swatch) => (
+                                    <button
+                                      key={swatch.color}
+                                      onClick={() => {
+                                        setLayers((prev) =>
+                                          prev.map((l) => (l.id === layer.id ? { ...l, color: swatch.color } : l))
+                                        );
+                                      }}
+                                      className={`w-4 h-4 rounded-full border transition-transform shrink-0 ${
+                                        layer.color.toLowerCase() === swatch.color.toLowerCase()
+                                          ? "scale-125 border-amber-400 ring-1 ring-amber-500"
+                                          : "border-slate-700"
+                                      }`}
+                                      style={{ backgroundColor: swatch.color }}
+                                      title={swatch.name}
+                                    />
+                                  ))}
+                                </div>
+
+                                <div className="flex items-center gap-1 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">
+                                  <button
+                                    onClick={() => {
+                                      setLayers((prev) =>
+                                        prev.map((l) => (l.id === layer.id ? { ...l, fontSize: Math.max(8, l.fontSize - 1) } : l))
+                                      );
+                                    }}
+                                    className="w-5 h-5 flex items-center justify-center text-xs text-slate-300 hover:text-white"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="text-[10px] font-mono text-amber-400 px-0.5">{Math.round(layer.fontSize)}</span>
+                                  <button
+                                    onClick={() => {
+                                      setLayers((prev) =>
+                                        prev.map((l) => (l.id === layer.id ? { ...l, fontSize: Math.min(80, l.fontSize + 1) } : l))
+                                      );
+                                    }}
+                                    className="w-5 h-5 flex items-center justify-center text-xs text-slate-300 hover:text-white"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+
+                <div className="pt-2 text-center">
+                  <button
+                    onClick={() => setActiveTab("add")}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <span>+ Add Another Text Field</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* TAB: ADD TEXT */}
             {activeTab === "add" && (
@@ -1122,7 +1447,7 @@ export default function PosterEditorPage() {
                                 : "bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-850"
                             }`}
                           >
-                            <span style={{ fontFamily: font.name }}>{font.name}</span>
+                            <span style={{ fontFamily: getFontFamily(font.name) }}>{font.name}</span>
                             <span className="text-[10px] text-slate-500 font-sans">
                               {font.label.split("(")[1]?.replace(")", "") || ""}
                             </span>
@@ -1321,7 +1646,7 @@ export default function PosterEditorPage() {
                       }`}
                     >
                       <div className="truncate flex-1">
-                        <p className="text-xs font-medium truncate" style={{ fontFamily: layer.fontFamily }}>
+                        <p className="text-xs font-medium truncate" style={{ fontFamily: getFontFamily(layer.fontFamily) }}>
                           {layer.text || "(empty text)"}
                         </p>
                         <p className="text-[10px] text-slate-500 font-sans">
@@ -1418,6 +1743,11 @@ export default function PosterEditorPage() {
           {/* Canva-style Frame */}
           <div
             ref={posterContainerRef}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setEditingLayerId(null);
+              }
+            }}
             className="relative w-full max-w-[320px] xs:max-w-[360px] sm:max-w-[420px] lg:max-w-[460px] aspect-[572/1024] bg-white rounded-2xl sm:rounded-3xl shadow-2xl shadow-black/80 overflow-hidden border-2 border-amber-900/40 select-none group touch-none mx-auto shrink-0"
             style={{
               containerType: "inline-size",
@@ -1446,17 +1776,29 @@ export default function PosterEditorPage() {
             {/* Poster / Video Interactive Text Overlays (EXACT SAME COORDINATES) */}
             {layers.map((layer) => {
               const isSelected = selectedId === layer.id;
+              const isEditing = editingLayerId === layer.id;
 
               return (
                 <div
                   key={layer.id}
                   onPointerDown={(e) => handlePointerDown(e, layer.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Click to edit directly if already selected and wasn't dragged
+                    if (selectedId === layer.id && !hasMovedRef.current && !isEditing) {
+                      setEditingLayerId(layer.id);
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setEditingLayerId(layer.id);
+                  }}
                   style={{
                     position: "absolute",
                     left: `${layer.x}%`,
                     top: `${layer.y}%`,
                     transform: "translate(-50%, -50%)",
-                    fontFamily: layer.fontFamily,
+                    fontFamily: getFontFamily(layer.fontFamily),
                     fontSize: `calc(${layer.fontSize} * (100cqw / 440))`, // scaled with container query for crisp text on any mobile screen
                     fontWeight: layer.fontWeight,
                     fontStyle: layer.fontStyle,
@@ -1465,33 +1807,85 @@ export default function PosterEditorPage() {
                     textTransform: layer.textTransform,
                     textAlign: layer.textAlign,
                     textShadow: layer.shadow ? "2px 2px 8px rgba(0,0,0,0.3)" : "none",
-                    whiteSpace: "pre-wrap",
-                    cursor: "move",
-                    touchAction: "none",
-                    zIndex: isSelected ? 15 : 8,
+                    whiteSpace: isEditing ? "normal" : "pre-wrap",
+                    cursor: isEditing ? "text" : "move",
+                    touchAction: isEditing ? "auto" : "none",
+                    zIndex: isEditing ? 30 : isSelected ? 15 : 8,
                   }}
-                  className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded transition-all duration-100 touch-none select-none ${
-                    isSelected
+                  className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded transition-all duration-100 select-none ${
+                    isEditing
+                      ? "ring-2 ring-amber-400 bg-black/40 shadow-2xl"
+                      : isSelected
                       ? "ring-2 ring-amber-500 bg-amber-500/20 shadow-sm"
                       : "hover:ring-1 hover:ring-amber-400/50"
                   }`}
                 >
-                  {layer.text || "(empty)"}
+                  {isEditing ? (
+                    <textarea
+                      ref={inlineInputRef}
+                      value={layer.text}
+                      onChange={(e) => updateSelectedLayer({ text: e.target.value })}
+                      onBlur={() => setEditingLayerId(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setEditingLayerId(null);
+                        } else if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          setEditingLayerId(null);
+                        }
+                      }}
+                      rows={Math.max(1, layer.text.split("\n").length)}
+                      className="w-full bg-transparent border-0 rounded px-1 py-0 text-center outline-none resize-none overflow-hidden select-text pointer-events-auto"
+                      style={{
+                        fontFamily: "inherit",
+                        fontSize: "inherit",
+                        fontWeight: "inherit",
+                        fontStyle: "inherit",
+                        color: "inherit",
+                        letterSpacing: "inherit",
+                        textTransform: "inherit",
+                        textAlign: layer.textAlign,
+                        textShadow: "inherit",
+                        minWidth: "100px",
+                        maxWidth: "360px",
+                        lineHeight: 1.2,
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <>
+                      {layer.text || "(empty)"}
 
-                  {/* Move Handle Badge when active */}
-                  {isSelected && (
-                    <span className="absolute -top-3.5 -right-2 px-1.5 py-0.5 rounded bg-amber-600 text-[9px] font-sans font-bold text-white shadow pointer-events-none">
-                      Drag ✥
-                    </span>
+                      {/* Move Handle Badge & Direct Edit Badge */}
+                      {isSelected && (
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1 z-30 pointer-events-auto">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingLayerId(layer.id);
+                            }}
+                            className="px-2 py-0.5 rounded-full bg-amber-500 hover:bg-amber-400 text-[10px] font-sans font-bold text-slate-950 shadow-md flex items-center gap-1 active:scale-95 transition-transform"
+                            title="Directly edit text on canvas"
+                          >
+                            <span>✎</span>
+                            <span>Edit</span>
+                          </button>
+                          <span className="px-1.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-[9px] font-sans font-medium text-slate-300 shadow pointer-events-none">
+                            ✥ Drag
+                          </span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
             })}
 
-            {/* Anti-Screenshot Watermark Layer (Prevents Unlicensed Screenshots of Poster & Video) */}
+            {/* Anti-Screenshot Watermark Layer (Softened Opacity) */}
             <div className="absolute inset-0 pointer-events-none select-none z-[12] overflow-hidden">
               {/* Tiled Diagonal Watermark Pattern */}
-              <svg className="absolute inset-0 w-full h-full opacity-40" xmlns="http://www.w3.org/2000/svg">
+              <svg className="absolute inset-0 w-full h-full opacity-[0.14]" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                   <pattern
                     id="canvas-watermark-grid"
@@ -1503,9 +1897,8 @@ export default function PosterEditorPage() {
                     <text
                       x="10"
                       y="40"
-                      fill="#FFFFFF"
-                      stroke="#000000"
-                      strokeWidth="0.6"
+                      fill="rgba(255, 255, 255, 0.75)"
+                      stroke="none"
                       fontSize="14"
                       fontWeight="800"
                       letterSpacing="1.5"
@@ -1516,9 +1909,8 @@ export default function PosterEditorPage() {
                     <text
                       x="10"
                       y="62"
-                      fill="#F59E0B"
-                      stroke="#000000"
-                      strokeWidth="0.5"
+                      fill="rgba(245, 158, 11, 0.65)"
+                      stroke="none"
                       fontSize="10"
                       fontWeight="700"
                       letterSpacing="1"
@@ -1530,9 +1922,8 @@ export default function PosterEditorPage() {
                     <text
                       x="140"
                       y="120"
-                      fill="#FFFFFF"
-                      stroke="#000000"
-                      strokeWidth="0.6"
+                      fill="rgba(255, 255, 255, 0.75)"
+                      stroke="none"
                       fontSize="14"
                       fontWeight="800"
                       letterSpacing="1.5"
@@ -1543,9 +1934,8 @@ export default function PosterEditorPage() {
                     <text
                       x="140"
                       y="142"
-                      fill="#F59E0B"
-                      stroke="#000000"
-                      strokeWidth="0.5"
+                      fill="rgba(245, 158, 11, 0.65)"
+                      stroke="none"
                       fontSize="10"
                       fontWeight="700"
                       letterSpacing="1"
@@ -1558,9 +1948,9 @@ export default function PosterEditorPage() {
                 <rect width="100%" height="100%" fill="url(#canvas-watermark-grid)" />
               </svg>
 
-              {/* Center Watermark Stamp */}
+              {/* Center Watermark Stamp with Soft Translucent Opacity */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="px-5 py-2.5 rounded-2xl bg-black/45 backdrop-blur-[2px] border border-amber-400/50 text-center transform -rotate-12 shadow-2xl opacity-75">
+                <div className="px-5 py-2.5 rounded-2xl bg-black/20 backdrop-blur-[1px] border border-amber-400/20 text-center transform -rotate-12 shadow-sm opacity-25">
                   <span className="text-sm font-black tracking-widest text-white uppercase block drop-shadow-md">
                     GetMyInvites.com
                   </span>
@@ -1570,8 +1960,8 @@ export default function PosterEditorPage() {
                 </div>
               </div>
 
-              {/* Bottom Branded Security Watermark Strip */}
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/85 to-transparent pt-4 pb-2 px-3 text-center border-t border-amber-500/30">
+              {/* Bottom Branded Security Watermark Strip (Subtle) */}
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 via-black/35 to-transparent pt-3 pb-1.5 px-3 text-center border-t border-amber-500/15 opacity-70">
                 <p className="text-[10px] sm:text-[11px] font-bold text-amber-300 tracking-wide flex items-center justify-center gap-1.5 drop-shadow">
                   <span>🔒 WATERMARKED PREVIEW</span>
                   <span className="text-white/60 font-normal">•</span>
@@ -1622,11 +2012,147 @@ export default function PosterEditorPage() {
             </div>
           </div>
 
+          {/* Mobile Quick Edit Toolbar (Appears right below canvas on mobile when a layer is selected) */}
+          {selectedLayer && (
+            <div className="lg:hidden w-full max-w-[340px] xs:max-w-[380px] sm:max-w-[420px] mt-2.5 p-3 rounded-2xl bg-slate-900/95 border border-amber-500/40 shadow-2xl backdrop-blur-md space-y-2.5 z-20">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                  <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider truncate">
+                    Edit Selected Text
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleDuplicateLayer(selectedLayer.id)}
+                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
+                    title="Duplicate"
+                  >
+                    📋
+                  </button>
+                  <button
+                    onClick={() => handleDeleteLayer(selectedLayer.id)}
+                    className="p-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs"
+                    title="Delete"
+                  >
+                    🗑️
+                  </button>
+                  <button
+                    onClick={() => setSelectedId("")}
+                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs px-2"
+                    title="Done"
+                  >
+                    ✕ Done
+                  </button>
+                </div>
+              </div>
+
+              {/* Direct text input right on mobile */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={selectedLayer.text}
+                  onChange={(e) => updateSelectedLayer({ text: e.target.value })}
+                  placeholder="Type text..."
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none"
+                  style={{ fontFamily: getFontFamily(selectedLayer.fontFamily) }}
+                />
+              </div>
+
+              {/* Horizontal Scrollable Font Chips */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Font:</span>
+                  <span className="text-amber-400 font-medium" style={{ fontFamily: getFontFamily(selectedLayer.fontFamily) }}>
+                    {selectedLayer.fontFamily}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                  {FONTS.map((font) => (
+                    <button
+                      key={font.name}
+                      onClick={() => updateSelectedLayer({ fontFamily: font.name })}
+                      className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap shrink-0 transition-all border ${
+                        selectedLayer.fontFamily === font.name
+                          ? "bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-sm"
+                          : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750"
+                      }`}
+                      style={{ fontFamily: getFontFamily(font.name) }}
+                    >
+                      {font.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Horizontal Color Swatches & Size Buttons */}
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                  {COLOR_SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch.color}
+                      onClick={() => updateSelectedLayer({ color: swatch.color })}
+                      className={`w-5 h-5 rounded-full border transition-transform shrink-0 ${
+                        selectedLayer.color.toLowerCase() === swatch.color.toLowerCase()
+                          ? "scale-125 border-amber-400 ring-2 ring-amber-500/50"
+                          : "border-slate-700"
+                      }`}
+                      style={{ backgroundColor: swatch.color }}
+                      title={swatch.name}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={selectedLayer.color}
+                    onChange={(e) => updateSelectedLayer({ color: e.target.value })}
+                    className="w-5 h-5 rounded-full cursor-pointer bg-transparent border-0 p-0 shrink-0"
+                    title="Custom color"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
+                  <button
+                    onClick={() => updateSelectedLayer({ fontSize: Math.max(8, selectedLayer.fontSize - 2) })}
+                    className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-slate-300 hover:bg-slate-800"
+                    title="Decrease Size"
+                  >
+                    -
+                  </button>
+                  <span className="text-[10px] font-mono text-amber-400 px-1 min-w-[28px] text-center">
+                    {Math.round(selectedLayer.fontSize)}
+                  </span>
+                  <button
+                    onClick={() => updateSelectedLayer({ fontSize: Math.min(80, selectedLayer.fontSize + 2) })}
+                    className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-slate-300 hover:bg-slate-800"
+                    title="Increase Size"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Quick Canvas Action Bar */}
           <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 z-20 pb-2">
             <button
+              onClick={() => setActiveTab("quick")}
+              className={`px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-bold transition-all shadow-md flex items-center gap-1.5 active:scale-95 border ${
+                activeTab === "quick"
+                  ? "bg-amber-500 text-slate-950 border-amber-400"
+                  : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+              }`}
+            >
+              <span>⚡ Quick Edit</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("add")}
-              className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-400 text-xs font-bold transition-all shadow-md flex items-center gap-1.5 active:scale-95"
+              className={`px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-bold transition-all shadow-md flex items-center gap-1.5 active:scale-95 border ${
+                activeTab === "add"
+                  ? "bg-amber-500 text-slate-950 border-amber-400"
+                  : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+              }`}
             >
               <span className="text-sm font-black leading-none">+</span>
               <span>Add Text</span>
@@ -1634,16 +2160,24 @@ export default function PosterEditorPage() {
 
             <button
               onClick={() => setActiveTab("style")}
-              className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all shadow-md flex items-center gap-1.5 active:scale-95"
+              className={`px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-bold transition-all shadow-md flex items-center gap-1.5 active:scale-95 border ${
+                activeTab === "style"
+                  ? "bg-amber-500 text-slate-950 border-amber-400"
+                  : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+              }`}
             >
-              <span>✏️ Edit Text</span>
+              <span>🎨 Style</span>
             </button>
 
             <button
               onClick={() => setActiveTab("presets")}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition-all shadow-md flex items-center gap-1.5 active:scale-95"
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-medium transition-all shadow-md flex items-center gap-1.5 active:scale-95 border ${
+                activeTab === "presets"
+                  ? "bg-amber-500 text-slate-950 border-amber-400"
+                  : "bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700"
+              }`}
             >
-              <span>⚡ Presets</span>
+              <span>✨ Presets</span>
             </button>
           </div>
         </div>
@@ -1729,39 +2263,65 @@ export default function PosterEditorPage() {
                     </button>
                   </div>
 
-                  {selectedPaymentMethod === "upi" && (
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-2">
-                      <div className="w-32 h-32 mx-auto bg-white p-2 rounded-xl flex items-center justify-center">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=getmyinvites@upi&pn=GetMyInvites&am=49&cu=INR`}
-                          alt="Scan UPI QR Code"
-                          className="w-full h-full object-contain"
-                        />
+                  {selectedPaymentMethod === "upi" ? (
+                    <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-2">
+                      <div className="flex items-center justify-center gap-3 text-lg py-1">
+                        <span>⚡</span>
+                        <span className="text-xs font-semibold text-slate-300">
+                          Google Pay • PhonePe • Paytm • BHIM
+                        </span>
                       </div>
-                      <p className="text-xs text-slate-300">
-                        Scan with GPay / PhonePe or pay directly below:
+                      <p className="text-[11px] text-slate-400">
+                        Click below to launch Razorpay UPI checkout with instant app intent & QR scan.
                       </p>
-                      <span className="text-[11px] text-amber-400 font-mono">UPI ID: getmyinvites@upi</span>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-2">
+                      <div className="flex items-center justify-center gap-2 text-lg py-1">
+                        <span>💳</span>
+                        <span className="text-xs font-semibold text-slate-300">
+                          Visa • Mastercard • RuPay • NetBanking
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Supports all domestic & international cards, all major Indian banks, and wallets.
+                      </p>
                     </div>
                   )}
                 </div>
 
-                <button
-                  onClick={handleProcessPosterPayment}
-                  className="w-full py-4 rounded-full bg-gradient-to-r from-[#6D214F] via-[#D4AF70] to-[#6D214F] text-[#FFF9F2] font-extrabold text-sm shadow-xl shadow-[#6D214F]/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 border border-[#D4AF70]/40"
-                >
-                  <span>Pay ₹49 & Instant HD Download</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#D4AF70]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </button>
+                <div className="space-y-2.5">
+                  <button
+                    onClick={handleProcessPosterPayment}
+                    disabled={isPaymentLoading}
+                    className="w-full py-4 rounded-full bg-gradient-to-r from-[#6D214F] via-[#D4AF70] to-[#6D214F] text-[#FFF9F2] font-extrabold text-sm shadow-xl shadow-[#6D214F]/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 border border-[#D4AF70]/40 disabled:opacity-60 cursor-pointer"
+                  >
+                    {isPaymentLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-[#FFF9F2] border-t-transparent rounded-full animate-spin" />
+                        <span>Opening Razorpay Secure Checkout...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Pay ₹49 & Instant HD Download</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#D4AF70]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+                    <span className="text-emerald-400">🔒</span>
+                    <span>Secured by <strong>Razorpay</strong> • 256-Bit SSL Encryption</span>
+                  </p>
+                </div>
               </div>
             )}
 
             {posterPaymentStep === "processing" && (
               <div className="py-12 text-center space-y-4">
                 <div className="w-16 h-16 mx-auto rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
-                <h4 className="text-xl font-bold text-white">Verifying Secure Payment...</h4>
+                <h4 className="text-xl font-bold text-white">Payment Confirmed!</h4>
                 <p className="text-xs text-slate-400">
                   Generating your Ultra HD watermark-free invitation poster...
                 </p>
@@ -1779,6 +2339,14 @@ export default function PosterEditorPage() {
                     Your Ultra HD clean invitation has been downloaded!
                   </p>
                 </div>
+
+                {verifiedPaymentId && (
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
+                    <span className="text-slate-500">Razorpay Ref ID: </span>
+                    <span className="text-amber-400 font-semibold">{verifiedPaymentId}</span>
+                  </div>
+                )}
+
                 <p className="text-xs text-slate-400 max-w-xs mx-auto">
                   Check your downloads folder for{" "}
                   <code className="text-amber-300">GetMyInvites-Wedding-Poster-HD-Clean.png</code>.
@@ -1896,32 +2464,58 @@ export default function PosterEditorPage() {
                     </button>
                   </div>
 
-                  {selectedPaymentMethod === "upi" && (
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-2">
-                      <div className="w-28 h-28 mx-auto bg-white p-2 rounded-xl flex items-center justify-center">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=upi://pay?pa=getmyinvites@upi&pn=GetMyInvites&am=99&cu=INR`}
-                          alt="Scan UPI QR Code"
-                          className="w-full h-full object-contain"
-                        />
+                  {selectedPaymentMethod === "upi" ? (
+                    <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-2">
+                      <div className="flex items-center justify-center gap-3 text-lg py-1">
+                        <span>⚡</span>
+                        <span className="text-xs font-semibold text-slate-300">
+                          Google Pay • PhonePe • Paytm • BHIM
+                        </span>
                       </div>
-                      <p className="text-xs text-slate-300">
-                        Scan & pay ₹99 to render the high-res video:
+                      <p className="text-[11px] text-slate-400">
+                        Instant UPI payment via direct app intent or dynamic QR code.
                       </p>
-                      <span className="text-[11px] text-amber-400 font-mono">UPI ID: getmyinvites@upi</span>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-2">
+                      <div className="flex items-center justify-center gap-2 text-lg py-1">
+                        <span>💳</span>
+                        <span className="text-xs font-semibold text-slate-300">
+                          Visa • Mastercard • RuPay • NetBanking
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        All domestic & international cards, all Indian banks, and wallets.
+                      </p>
                     </div>
                   )}
                 </div>
 
-                <button
-                  onClick={handleProcessVideoPayment}
-                  className="w-full py-4 rounded-full bg-gradient-to-r from-[#6D214F] via-[#D4AF70] to-[#6D214F] text-[#FFF9F2] font-extrabold text-sm shadow-xl shadow-[#6D214F]/40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 border border-[#D4AF70]/40"
-                >
-                  <span>Pay ₹99 & Render Animated Video</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#D4AF70]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </button>
+                <div className="space-y-2.5">
+                  <button
+                    onClick={handleProcessVideoPayment}
+                    disabled={isPaymentLoading}
+                    className="w-full py-4 rounded-full bg-gradient-to-r from-[#6D214F] via-[#D4AF70] to-[#6D214F] text-[#FFF9F2] font-extrabold text-sm shadow-xl shadow-[#6D214F]/40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 border border-[#D4AF70]/40 disabled:opacity-60 cursor-pointer"
+                  >
+                    {isPaymentLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-[#FFF9F2] border-t-transparent rounded-full animate-spin" />
+                        <span>Opening Razorpay Secure Checkout...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Pay ₹99 & Render Animated Video</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#D4AF70]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+                    <span className="text-emerald-400">🔒</span>
+                    <span>Secured by <strong>Razorpay</strong> • 256-Bit SSL Encryption</span>
+                  </p>
+                </div>
               </div>
             )}
 
@@ -1971,6 +2565,14 @@ export default function PosterEditorPage() {
                     Your 1080p Animated Wedding Video has downloaded!
                   </p>
                 </div>
+
+                {verifiedPaymentId && (
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
+                    <span className="text-slate-500">Razorpay Ref ID: </span>
+                    <span className="text-amber-400 font-semibold">{verifiedPaymentId}</span>
+                  </div>
+                )}
+
                 <p className="text-xs text-slate-400 max-w-xs mx-auto">
                   Check your downloads folder for{" "}
                   <code className="text-amber-300">GetMyInvites-Animated-Wedding-Invitation-1080p.mp4</code>.
