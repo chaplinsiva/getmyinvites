@@ -276,7 +276,12 @@ export default function PosterEditorPage() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStatusText, setRenderStatusText] = useState("");
 
-  const [verifiedPaymentId, setVerifiedPaymentId] = useState<string | null>(null);
+  // Separate payment tracking for poster and video (each allows 3 downloads)
+  const MAX_DOWNLOADS_PER_PAYMENT = 3;
+  const [posterPaymentId, setPosterPaymentId] = useState<string | null>(null);
+  const [posterDownloadCount, setPosterDownloadCount] = useState(0);
+  const [videoPaymentId, setVideoPaymentId] = useState<string | null>(null);
+  const [videoDownloadCount, setVideoDownloadCount] = useState(0);
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
 
   const [showToast, setShowToast] = useState<string | null>(null);
@@ -655,8 +660,8 @@ export default function PosterEditorPage() {
 
   // Poster Payment Handler with Razorpay Pipeline
   const handleProcessPosterPayment = async () => {
-    // If already verified previously in this session, download clean poster immediately
-    if (verifiedPaymentId) {
+    // If already paid for poster and downloads remaining, download immediately
+    if (posterPaymentId && posterDownloadCount < MAX_DOWNLOADS_PER_PAYMENT) {
       setPosterPaymentStep("processing");
       try {
         const dataUrl = await generatePosterImage(false);
@@ -664,6 +669,7 @@ export default function PosterEditorPage() {
         link.download = "GetMyInvites-Wedding-Poster-HD-Clean.png";
         link.href = dataUrl;
         link.click();
+        setPosterDownloadCount((prev) => prev + 1);
         setPosterPaymentStep("success");
       } catch (err) {
         console.error(err);
@@ -673,15 +679,25 @@ export default function PosterEditorPage() {
       return;
     }
 
+    // If all 3 downloads used, require a new payment
+    if (posterPaymentId && posterDownloadCount >= MAX_DOWNLOADS_PER_PAYMENT) {
+      setPosterPaymentId(null);
+      setPosterDownloadCount(0);
+      setPosterPaymentStep("pay");
+      showNotification("Your 3 poster downloads are used. Please pay again for another set.");
+      return;
+    }
+
     setIsPaymentLoading(true);
     await initiateRazorpayPayment({
       itemType: "poster",
       itemTitle: "GetMyInvites - Traditional Chibi Poster HD Clean",
       preferredMethod: selectedPaymentMethod,
       onSuccess: async ({ paymentId }) => {
-        setVerifiedPaymentId(paymentId);
+        setPosterPaymentId(paymentId);
+        setPosterDownloadCount(0);
         setIsPaymentLoading(false);
-        setShowToast(`Payment verified! ID: ${paymentId}`);
+        setShowToast(`Poster payment verified! ID: ${paymentId}`);
         setPosterPaymentStep("processing");
 
         try {
@@ -690,6 +706,7 @@ export default function PosterEditorPage() {
           link.download = "GetMyInvites-Wedding-Poster-HD-Clean.png";
           link.href = dataUrl;
           link.click();
+          setPosterDownloadCount(1);
           setPosterPaymentStep("success");
         } catch (err) {
           console.error(err);
@@ -856,9 +873,19 @@ export default function PosterEditorPage() {
 
   // Video Payment Handler with Razorpay Pipeline
   const handleProcessVideoPayment = async () => {
-    // If already verified previously in this session, proceed straight to render
-    if (verifiedPaymentId) {
+    // If already paid for video and downloads remaining, proceed straight to render
+    if (videoPaymentId && videoDownloadCount < MAX_DOWNLOADS_PER_PAYMENT) {
+      setVideoDownloadCount((prev) => prev + 1);
       await executeVideoRendering();
+      return;
+    }
+
+    // If all 3 downloads used, require a new payment
+    if (videoPaymentId && videoDownloadCount >= MAX_DOWNLOADS_PER_PAYMENT) {
+      setVideoPaymentId(null);
+      setVideoDownloadCount(0);
+      setVideoPayStep("pay");
+      showNotification("Your 3 video downloads are used. Please pay again for another set.");
       return;
     }
 
@@ -868,9 +895,10 @@ export default function PosterEditorPage() {
       itemTitle: "GetMyInvites - 1080p Animated Video Invitation",
       preferredMethod: selectedPaymentMethod,
       onSuccess: async ({ paymentId }) => {
-        setVerifiedPaymentId(paymentId);
+        setVideoPaymentId(paymentId);
+        setVideoDownloadCount(1);
         setIsPaymentLoading(false);
-        setShowToast(`Payment verified! ID: ${paymentId}`);
+        setShowToast(`Video payment verified! ID: ${paymentId}`);
         await executeVideoRendering();
       },
       onError: (err) => {
@@ -2340,10 +2368,15 @@ export default function PosterEditorPage() {
                   </p>
                 </div>
 
-                {verifiedPaymentId && (
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
-                    <span className="text-slate-500">Razorpay Ref ID: </span>
-                    <span className="text-amber-400 font-semibold">{verifiedPaymentId}</span>
+                {posterPaymentId && (
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center space-y-1">
+                    <div>
+                      <span className="text-slate-500">Razorpay Ref ID: </span>
+                      <span className="text-amber-400 font-semibold">{posterPaymentId}</span>
+                    </div>
+                    <div className="text-emerald-400">
+                      Downloads used: {posterDownloadCount} / {MAX_DOWNLOADS_PER_PAYMENT}
+                    </div>
                   </div>
                 )}
 
@@ -2354,9 +2387,13 @@ export default function PosterEditorPage() {
                 <div className="pt-2 flex gap-3">
                   <button
                     onClick={() => handleProcessPosterPayment()}
-                    className="flex-1 py-3 rounded-full bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors"
+                    disabled={posterDownloadCount >= MAX_DOWNLOADS_PER_PAYMENT}
+                    className="flex-1 py-3 rounded-full bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-white transition-colors"
                   >
-                    Download Again
+                    {posterDownloadCount >= MAX_DOWNLOADS_PER_PAYMENT
+                      ? "3/3 Downloads Used"
+                      : `Download Again (${MAX_DOWNLOADS_PER_PAYMENT - posterDownloadCount} left)`
+                    }
                   </button>
                   <button
                     onClick={() => setShowPosterPaymentModal(false)}
@@ -2566,10 +2603,15 @@ export default function PosterEditorPage() {
                   </p>
                 </div>
 
-                {verifiedPaymentId && (
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
-                    <span className="text-slate-500">Razorpay Ref ID: </span>
-                    <span className="text-amber-400 font-semibold">{verifiedPaymentId}</span>
+                {videoPaymentId && (
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center space-y-1">
+                    <div>
+                      <span className="text-slate-500">Razorpay Ref ID: </span>
+                      <span className="text-amber-400 font-semibold">{videoPaymentId}</span>
+                    </div>
+                    <div className="text-emerald-400">
+                      Downloads used: {videoDownloadCount} / {MAX_DOWNLOADS_PER_PAYMENT}
+                    </div>
                   </div>
                 )}
 
@@ -2581,9 +2623,13 @@ export default function PosterEditorPage() {
                 <div className="pt-2 flex gap-3">
                   <button
                     onClick={() => handleProcessVideoPayment()}
-                    className="flex-1 py-3 rounded-full bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors"
+                    disabled={videoDownloadCount >= MAX_DOWNLOADS_PER_PAYMENT}
+                    className="flex-1 py-3 rounded-full bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-white transition-colors"
                   >
-                    Download Again
+                    {videoDownloadCount >= MAX_DOWNLOADS_PER_PAYMENT
+                      ? "3/3 Downloads Used"
+                      : `Download Again (${MAX_DOWNLOADS_PER_PAYMENT - videoDownloadCount} left)`
+                    }
                   </button>
                   <button
                     onClick={() => setShowVideoModal(false)}
